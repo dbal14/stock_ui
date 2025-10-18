@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import AutoTable from './components/AutoTable';
 import {
   Home,
   FileText,
@@ -64,9 +65,9 @@ export default function App() {
         <nav className="space-y-2 flex-grow">
           <SidebarLink icon={Home} label="Home" />
           <SidebarLink icon={TrendingUp} label="Market" />
-          <SidebarLink icon={IconLineChart} label="Stocks" />
-          <SidebarLink icon={Briefcase} label="Portfolio" />
-          <SidebarLink icon={IconPieChart} label="Watchlist" />
+          <SidebarLink icon={IconLineChart} label="Upside" />
+          <SidebarLink icon={Briefcase} label="Technical" />
+          <SidebarLink icon={IconPieChart} label="Peer Analysis" />
           <SidebarLink icon={DollarSign} label="Transactions" />
           <SidebarLink icon={BarChart2} label="Analytics" />
           <SidebarLink icon={FileText} label="Reports" />
@@ -79,6 +80,8 @@ export default function App() {
       </aside>
 
       <main className="flex-1 p-6 overflow-y-auto">
+        <AutoTable />
+
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-semibold">Dashboard Overview</h2>
           <input className="hidden md:block rounded-xl border border-gray-300 px-3 py-2 text-sm w-64" placeholder="Search..." />
@@ -120,14 +123,14 @@ export default function App() {
               <ResponsiveContainer width="100%" height="100%">
                 <RechartsPieChart>
                   <Pie data={pieData.length ? pieData : [{name:'Completed', value:0}]} dataKey="value" innerRadius={50} outerRadius={70}>
-                    { (pieData.length ? pieData : [{},{ }]).map((entry, index) => (
-                      <Cell key={index} fill={COLORS[index]} />
-                    )) }
+                    {(pieData.length ? pieData : [{},{ }]).map((entry, index) => (
+                      <Cell key={index} fill={COLORS[index % COLORS.length]} />
+                    ))}
                   </Pie>
                 </RechartsPieChart>
               </ResponsiveContainer>
             </div>
-            <p className="text-center text-lg font-bold mt-2">{pieData[0] ? pieData[0].value + '% Completed' : '0% Completed'}</p>
+            <p className="text-center text-lg font-bold mt-2">{pieData[0] ? `${pieData[0].value}% Completed` : '0% Completed'}</p>
           </div>
         </div>
 
@@ -136,7 +139,7 @@ export default function App() {
             <div className="font-semibold mb-2">Sales Analytics</div>
             <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
-                <RechartsLineChart data={lineData}>
+                <RechartsLineChart data={lineData.length ? lineData : [{name:'Mon', uv:0}]}>
                   <XAxis dataKey="name" />
                   <YAxis />
                   <Tooltip />
