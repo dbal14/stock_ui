@@ -1,0 +1,19 @@
+{
+  "name": "dashboard-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 5173"
+  },
+  "dependencies": {
+    "lucide-react": "^0.262.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "recharts": "^2.6.2"
+  },
+  "devDependencies": {
+    "vite": "^7.1.10"
+  }
+}
