@@ -2,9 +2,10 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 from datetime import datetime, timedelta
 import random
-
+import pandas as pd
 app = Flask(__name__)
 CORS(app)
+
 
 def sample_metrics():
     now = datetime.utcnow().isoformat()
@@ -30,42 +31,95 @@ def format_pct(value):
     """Return a string like +1.23% or -0.45%"""
     return f"{value:+.2f}%"
 
-@app.route('/api/stocks')
+CSV_PATH = r"C:\Users\deepa\Downloads\nifty-500.csv"
+
+def load_stocks_df(path):
+    # Try to read CSV; if it fails, return empty DataFrame
+    try:
+        df = pd.read_csv(path, dtype=str).fillna("")  # read everything as string to avoid dtype issues
+        # normalize column names by stripping whitespace
+        df.columns = [c.strip() for c in df.columns]
+        return df
+    except Exception as e:
+        print(f"Failed to load CSV at {path}: {e}")
+        return pd.DataFrame()
+
+# Load once at startup (restart app to reload file). If you want fresh reads, call load_stocks_df inside the route.
+STOCKS_DF = load_stocks_df(CSV_PATH)
+
+def format_pct_value(val):
+    # If already formatted (endswith '%') return as-is
+    if isinstance(val, str) and val.strip().endswith("%"):
+        return val.strip()
+    try:
+        f = float(val)
+        return f"{f:+.2f}%"
+    except Exception:
+        return str(val or "")
+
+@app.route("/api/stocks")
 def get_stocks():
-    """Return a JSON payload of stocks with day/weekly/monthly returns.
-
-    Optional query params:
-      - tickers: comma-separated tickers to return (e.g. ?tickers=RELIANCE,TCS)
-      - n: integer, limit the number of generated tickers from the default list
     """
-    # parse tickers from query string (optional)
-    tickers_q = request.args.get('tickers')
+    Returns JSON of stocks read from CSV.
+    Optional query params:
+      - tickers: comma-separated list to filter by name, bse or nse code (case-insensitive)
+      - n: integer limit (# rows)
+    """
+    global STOCKS_DF
+
+    if STOCKS_DF.empty:
+        return jsonify({
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "count": 0,
+            "stocks": [],
+            "error": f"No CSV loaded at {CSV_PATH}"
+        }), 200
+
+    # Work on a copy
+    df = STOCKS_DF.copy()
+
+    # Optional filtering by tickers (matches Name, BSE Code, NSE Code if present)
+    tickers_q = request.args.get("tickers", default=None, type=str)
     if tickers_q:
-        tickers = [t.strip().upper() for t in tickers_q.split(',') if t.strip()]
-    else:
-        tickers = DEFAULT_TICKERS.copy()
+        wanted = [t.strip().upper() for t in tickers_q.split(",") if t.strip()]
+        def match_row(row):
+            # check several possible columns that might contain the ticker/name
+            name = str(row.get("Name", "") or row.get("Symbol", "") or row.get("NSE Code", "")).upper()
+            bse = str(row.get("BSE Code", "")).upper()
+            nse = str(row.get("NSE Code", "")).upper()
+            for t in wanted:
+                if t == name or t == bse or t == nse:
+                    return True
+            return False
+        df = df[df.apply(match_row, axis=1)]
 
-    # optional limit
-    n = request.args.get('n', type=int)
+    # Optional limit n
+    n = request.args.get("n", default=None, type=int)
     if n is not None and n > 0:
-        tickers = tickers[:n]
+        df = df.head(n)
 
+    # Build standardized output
     stocks = []
-    for t in tickers:
-        day_ret = round(random.uniform(-5.0, 5.0), 2)
-        week_ret = round(random.uniform(-12.0, 12.0), 2)
-        month_ret = round(random.uniform(-25.0, 25.0), 2)
-        stocks.append({
-            "name": t,
-            "day_return": format_pct(day_ret),
-            "weekly_return": format_pct(week_ret),
-            "monthly_return": format_pct(month_ret)
-        })
+    # Try to find column names used in your CSV (fall back to common alternatives)
+    col_name = next((c for c in df.columns if c.lower() in ("name", "symbol")), None)
+    col_return_1d = next((c for c in df.columns if c.lower() in ("return over 1day", "return over 1 day", "return_1day", "1d")), None)
+    col_return_1w = next((c for c in df.columns if c.lower() in ("return over 1week", "return over 1 week", "return_1week", "1w")), None)
+    col_return_1m = next((c for c in df.columns if c.lower() in ("return over 1month", "return over 1 month", "return_1month", "1m")), None)
+
+    for _, row in df.iterrows():
+        item = {}
+        item["name"] = (row.get(col_name, "") if col_name else row.get("Name", "") or row.get("Symbol", "") or "")
+        item["day_return"] = format_pct_value(row.get(col_return_1d, "")) if col_return_1d else ""
+        item["weekly_return"] = format_pct_value(row.get(col_return_1w, "")) if col_return_1w else ""
+        item["monthly_return"] = format_pct_value(row.get(col_return_1m, "")) if col_return_1m else ""
+        # include raw row if you want extra fields (uncomment next line)
+        # item.update({k: (v if v != "" else None) for k, v in row.items()})
+        stocks.append(item)
 
     payload = {
-        "generated_at": datetime.utcnow().isoformat() + 'Z',
+        "generated_at": datetime.utcnow().isoformat() + "Z",
         "count": len(stocks),
-        "stocks": stocks
+        "stocks": stocks,
     }
     return jsonify(payload)
 @app.route("/api/random_timeseries")
