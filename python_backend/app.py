@@ -9,12 +9,11 @@ CORS(app)
 def sample_metrics():
     now = datetime.utcnow().isoformat()
     return [
-        {"title": "Nifty50", "value": "34,150", "d_change": "-0.67%", "prev_value": "34,378", "unit": "points", "last_updated": now},
-        {"title": "Sensex", "value": "15,256", "d_change": "+0.12%", "prev_value": "15,237", "unit": "points", "last_updated": now},
-        {"title": "Market Cap", "value": "31,250", "d_change": "+0.5%", "prev_value": "31,095", "unit": "T INR", "last_updated": now},
-        {"title": "Visitors", "value": "15,803", "d_change": "+2.3%", "prev_value": "15,453", "unit": "visitors", "last_updated": now},
-        {"title": "Active Users", "value": "8,432", "d_change": "-1.1%", "prev_value": "8,525", "unit": "users", "last_updated": now},
-        {"title": "New Signups", "value": "1,245", "d_change": "+4.8%", "prev_value": "1,188", "unit": "signups", "last_updated": now}
+        {"title": "Nifty50", "value": "34,150", "d_change": "-0.67%"},
+        {"title": "Sensex", "value": "15,256", "d_change": "+0.12%"},
+        {"title": "Midcap", "value": "31,250", "d_change": "+0.5%"},
+        {"title": "SmallCap", "value": "15,803", "d_change": "+2.3%"},
+        {"title": "Microcap", "value": "8,432", "d_change": "-1.1%"},
     ]
 
 @app.route("/api/metrics")
@@ -22,18 +21,18 @@ def metrics():
     return jsonify({
         "metrics": sample_metrics(),
         # timeseries can be used elsewhere
-        "timeseries": [
-            {"name": "Week 1", "uv": 200},
-            {"name": "Week 2", "uv": 300},
-            {"name": "Week 3", "uv": 500},
-            {"name": "Week 4", "uv": 700},
-            {"name": "Week 5", "uv": 650},
-            {"name": "Week 6", "uv": 720}
-        ],
-        "pie": [
-            {"name": "Completed", "value": 71},
-            {"name": "Remaining", "value": 29}
-        ]
+        # "timeseries": [
+        #     {"name": "Week 1", "uv": 200},
+        #     {"name": "Week 2", "uv": 300},
+        #     {"name": "Week 3", "uv": 500},
+        #     {"name": "Week 4", "uv": 700},
+        #     {"name": "Week 5", "uv": 650},
+        #     {"name": "Week 6", "uv": 720}
+        # ],
+        # "pie": [
+        #     {"name": "Completed", "value": 71},
+        #     {"name": "Remaining", "value": 29}
+        # ]
     })
 
 @app.route("/api/weekly")
