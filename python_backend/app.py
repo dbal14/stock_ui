@@ -20,66 +20,54 @@ def sample_metrics():
 def metrics():
     return jsonify({
         "metrics": sample_metrics(),
-        # timeseries can be used elsewhere
-        # "timeseries": [
-        #     {"name": "Week 1", "uv": 200},
-        #     {"name": "Week 2", "uv": 300},
-        #     {"name": "Week 3", "uv": 500},
-        #     {"name": "Week 4", "uv": 700},
-        #     {"name": "Week 5", "uv": 650},
-        #     {"name": "Week 6", "uv": 720}
-        # ],
-        # "pie": [
-        #     {"name": "Completed", "value": 71},
-        #     {"name": "Remaining", "value": 29}
-        # ]
     })
 
-@app.route("/api/weekly")
-def weekly():
-    # Bar: daily values for a week
-    bar = [
-      {"name": "Mon", "value": 12},
-      {"name": "Tue", "value": 18},
-      {"name": "Wed", "value": 9},
-      {"name": "Thu", "value": 14},
-      {"name": "Fri", "value": 21},
-      {"name": "Sat", "value": 7},
-      {"name": "Sun", "value": 5}
-    ]
+DEFAULT_TICKERS = [
+    "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "LT", "MARUTI"
+]
 
-    # Line: 12 weeks of trend data
-    line = [{"name": f"Week {i+1}", "uv": random.randint(100, 900)} for i in range(12)]
+def format_pct(value):
+    """Return a string like +1.23% or -0.45%"""
+    return f"{value:+.2f}%"
 
-    # Pie: multiple categories for order completion / status
-    pie = [
-      {"name": "Completed", "value": 58},
-      {"name": "Pending", "value": 22},
-      {"name": "Cancelled", "value": 12},
-      {"name": "Refunded", "value": 8}
-    ]
+@app.route('/api/stocks')
+def get_stocks():
+    """Return a JSON payload of stocks with day/weekly/monthly returns.
 
-    # Sales analytics: monthly categories (used if frontend expects sales data)
-    sales = [{"name": datetime.utcnow().strftime('%b %Y'), "sales": random.randint(1000,5000)} for _ in range(6)]
-    for i in range(6):
-        sales[i]["name"] = (datetime.utcnow() - timedelta(weeks=4*(5-i))).strftime('%b %Y')
+    Optional query params:
+      - tickers: comma-separated tickers to return (e.g. ?tickers=RELIANCE,TCS)
+      - n: integer, limit the number of generated tickers from the default list
+    """
+    # parse tickers from query string (optional)
+    tickers_q = request.args.get('tickers')
+    if tickers_q:
+        tickers = [t.strip().upper() for t in tickers_q.split(',') if t.strip()]
+    else:
+        tickers = DEFAULT_TICKERS.copy()
 
-    # Sample invoices (if frontend wants them)
-    invoices = [
-        {"id": "INV-1001", "amount": 230, "status": "paid", "date": "2025-10-01"},
-        {"id": "INV-1002", "amount": 540, "status": "pending", "date": "2025-10-03"},
-        {"id": "INV-1003", "amount": 410, "status": "paid", "date": "2025-10-04"},
-        {"id": "INV-1004", "amount": 290, "status": "overdue", "date": "2025-10-06"}
-    ]
+    # optional limit
+    n = request.args.get('n', type=int)
+    if n is not None and n > 0:
+        tickers = tickers[:n]
 
-    return jsonify({
-        "bar": bar,
-        "line": line,
-        "pie": pie,
-        "sales": sales,
-        "invoices": invoices
-    })
+    stocks = []
+    for t in tickers:
+        day_ret = round(random.uniform(-5.0, 5.0), 2)
+        week_ret = round(random.uniform(-12.0, 12.0), 2)
+        month_ret = round(random.uniform(-25.0, 25.0), 2)
+        stocks.append({
+            "name": t,
+            "day_return": format_pct(day_ret),
+            "weekly_return": format_pct(week_ret),
+            "monthly_return": format_pct(month_ret)
+        })
 
+    payload = {
+        "generated_at": datetime.utcnow().isoformat() + 'Z',
+        "count": len(stocks),
+        "stocks": stocks
+    }
+    return jsonify(payload)
 @app.route("/api/random_timeseries")
 def random_timeseries():
     today = datetime.utcnow().date()

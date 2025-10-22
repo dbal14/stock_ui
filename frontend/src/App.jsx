@@ -1,7 +1,5 @@
 
-
 import React, { useEffect, useState } from 'react';
-import AutoTable from './components/AutoTable';
 import MarketOverview from './components/MarketOverview';
 import Sidebar from './components/Sidebar';
 
