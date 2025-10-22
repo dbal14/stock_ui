@@ -62,14 +62,6 @@ export default function AutoTable(){
                 <td className="p-2 align-middle"><Percent value={r.OneMoReturn} /></td>
                 <td className="p-2 align-middle"><Percent value={r.ThreeMoReturn} /></td>
                 <td className="p-2 align-middle"><Percent value={r.OneYrReturn} /></td>
-                <td className="p-2 align-middle">{r.MarketCap}</td>
-                <td className="p-2 align-middle">{r.TrailingPE}</td>
-                <td className="p-2 align-middle">{r.ForwardPE}</td>
-                <td className="p-2 align-middle">{r.DividendYield}</td>
-                <td className="p-2 align-middle">{r.NetMargin}</td>
-                <td className="p-2 align-middle">{r.LTGForecast}</td>
-                <td className="p-2 align-middle">{r.AnalystMean}</td>
-                <td className="p-2 align-middle">{r.AnalystCount}</td>
               </tr>
             )
           })}

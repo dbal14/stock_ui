@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import AutoTable from './components/AutoTable';
+import MetricsGrid from './components/MarketOverview';
 import {
   Home,
   FileText,
@@ -61,7 +62,6 @@ export default function App() {
         <div className="bg-orange-600 hover:bg-orange-500 text-white rounded-xl px-4 py-2 text-sm font-medium inline-block mb-4">
           Dashboard
         </div>
-
         <nav className="space-y-2 flex-grow">
           <SidebarLink icon={Home} label="Home" />
           <SidebarLink icon={TrendingUp} label="Market" />
@@ -80,28 +80,15 @@ export default function App() {
       </aside>
 
       <main className="flex-1 p-6 overflow-y-auto">
-        <AutoTable />
+        {/* <AutoTable /> */}
 
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-semibold">Dashboard Overview</h2>
           <input className="hidden md:block rounded-xl border border-gray-300 px-3 py-2 text-sm w-64" placeholder="Search..." />
         </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {metrics.length ? metrics.map((m, i) => (
-            <div key={i} className="card">
-              <div className="metric">{m.title}</div>
-              <div className="metric-value">{m.value}</div>
-            </div>
-          )) : [1,2,3,4].map(i => (
-            <div key={i} className="card">
-              <div className="metric">Metric</div>
-              <div className="metric-value">--</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Charts */}
+            <MetricsGrid metrics={metrics} />
+            
+            {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
           <div className="card lg:col-span-2">
             <div className="font-semibold mb-2">Weekly Overview</div>

@@ -2,5 +2,8 @@
 :root { --card-bg: #ffffff; --accent: #6366F1; }
 body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin: 0; background: #f3f4f6; color: #111827; }
 .card { background: var(--card-bg); border-radius: 1rem; padding: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
-.metric { color: #6b7280; font-size: 0.875rem; }
+.metric { color: hsl(220, 84%, 47%); font-size: 0.875rem; font-weight: bold;}
 .metric-value { font-weight: 700; margin-top: 0.5rem; font-size: 1.25rem; }
+.margin-top{ margin-top: 0rem;margin-left: 2rem;padding-bottom: .4rem;}
+.color-up{color:red;}
+.color-down{color:green;} 
