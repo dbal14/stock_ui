@@ -15,6 +15,9 @@ def sample_metrics():
         {"title": "Midcap", "value": "31,250", "d_change": "+0.5%"},
         {"title": "SmallCap", "value": "15,803", "d_change": "+2.3%"},
         {"title": "Microcap", "value": "8,432", "d_change": "-1.1%"},
+        {"title": "CrodOil", "value": "45,123", "d_change": "+0.9%"},
+        {"title": "Dullar", "value": "22,456", "d_change": "-0.4%"},
+        {"title": "vix", "value": "12,345", "d_change": "+1.2%"},
     ]
 
 @app.route("/api/metrics")
@@ -31,7 +34,7 @@ def format_pct(value):
     """Return a string like +1.23% or -0.45%"""
     return f"{value:+.2f}%"
 
-CSV_PATH = r"C:\Users\deepa\Downloads\nifty-500.csv"
+CSV_PATH = r"C:\Users\deepa\Downloads\nifty-50.csv"
 
 def load_stocks_df(path):
     # Try to read CSV; if it fails, return empty DataFrame
@@ -46,6 +49,39 @@ def load_stocks_df(path):
 
 # Load once at startup (restart app to reload file). If you want fresh reads, call load_stocks_df inside the route.
 STOCKS_DF = load_stocks_df(CSV_PATH)
+def parse_return(val):
+    """
+    Parse a return value and return a float.
+    Accepts strings like '+3.24%', '-1.2%', '3.5', or numeric types.
+    On parse failure returns 0.0
+    """
+    try:
+        if val is None:
+            return 0.0
+        s = str(val).strip()
+        if s == "":
+            return 0.0
+        # Remove trailing percent sign and plus sign if present
+        s = s.replace('%', '').replace('+', '')
+        return float(s)
+    except Exception:
+        return 0.0
+
+def sort_key(stock):
+    # parse numerical returns
+    d = parse_return(stock.get("day_return", 0))
+    w = parse_return(stock.get("weekly_return", 0))
+    m = parse_return(stock.get("monthly_return", 0))
+
+    # count how many of the three are negative
+    neg_count = sum(1 for v in (d, w, m) if v < 0)
+
+    # total (or average) to use as tie-breaker: higher total -> comes first
+    total = d + w + m
+
+    # sort by (neg_count ascending, -total descending)
+    return (neg_count, -total)
+
 
 def format_pct_value(val):
     # If already formatted (endswith '%') return as-is
@@ -115,7 +151,8 @@ def get_stocks():
         # include raw row if you want extra fields (uncomment next line)
         # item.update({k: (v if v != "" else None) for k, v in row.items()})
         stocks.append(item)
-
+    # apply sort in-place
+    stocks.sort(key=sort_key)
     payload = {
         "generated_at": datetime.utcnow().isoformat() + "Z",
         "count": len(stocks),
