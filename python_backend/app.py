@@ -3,22 +3,9 @@ from flask_cors import CORS
 from datetime import datetime, timedelta
 import random
 import pandas as pd
+from metrics import sample_metrics
 app = Flask(__name__)
 CORS(app)
-
-
-def sample_metrics():
-    now = datetime.utcnow().isoformat()
-    return [
-        {"title": "Nifty50", "value": "34,150", "d_change": "-0.67%"},
-        {"title": "Sensex", "value": "15,256", "d_change": "+0.12%"},
-        {"title": "Midcap", "value": "31,250", "d_change": "+0.5%"},
-        {"title": "SmallCap", "value": "15,803", "d_change": "+2.3%"},
-        {"title": "Microcap", "value": "8,432", "d_change": "-1.1%"},
-        {"title": "CrodOil", "value": "45,123", "d_change": "+0.9%"},
-        {"title": "Dullar", "value": "22,456", "d_change": "-0.4%"},
-        {"title": "vix", "value": "12,345", "d_change": "+1.2%"},
-    ]
 
 @app.route("/api/metrics")
 def metrics():
@@ -26,9 +13,6 @@ def metrics():
         "metrics": sample_metrics(),
     })
 
-DEFAULT_TICKERS = [
-    "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "LT", "MARUTI"
-]
 
 def format_pct(value):
     """Return a string like +1.23% or -0.45%"""
@@ -159,6 +143,10 @@ def get_stocks():
         "stocks": stocks,
     }
     return jsonify(payload)
+
+
+
+
 @app.route("/api/random_timeseries")
 def random_timeseries():
     today = datetime.utcnow().date()
