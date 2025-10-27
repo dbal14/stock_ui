@@ -34,8 +34,8 @@ def format_pct(value):
     """Return a string like +1.23% or -0.45%"""
     return f"{value:+.2f}%"
 
-CSV_PATH = r"C:\Users\deepa\Downloads\nifty-50.csv"
-
+# CSV_PATH = r"C:\Users\deepa\Downloads\nifty-50.csv"
+CSV_PATH = r"C:\Users\deepa\Downloads\data1.csv"
 def load_stocks_df(path):
     # Try to read CSV; if it fails, return empty DataFrame
     try:
@@ -139,6 +139,7 @@ def get_stocks():
     # Try to find column names used in your CSV (fall back to common alternatives)
     col_name = next((c for c in df.columns if c.lower() in ("name", "symbol")), None)
     col_return_1d = next((c for c in df.columns if c.lower() in ("return over 1day", "return over 1 day", "return_1day", "1d")), None)
+    col_return_1d = next((c for c in df.columns if c.lower() in ("return over 1day", "return over 1 day", "return_1day", "1d")), None)
     col_return_1w = next((c for c in df.columns if c.lower() in ("return over 1week", "return over 1 week", "return_1week", "1w")), None)
     col_return_1m = next((c for c in df.columns if c.lower() in ("return over 1month", "return over 1 month", "return_1month", "1m")), None)
 
@@ -148,8 +149,7 @@ def get_stocks():
         item["day_return"] = format_pct_value(row.get(col_return_1d, "")) if col_return_1d else ""
         item["weekly_return"] = format_pct_value(row.get(col_return_1w, "")) if col_return_1w else ""
         item["monthly_return"] = format_pct_value(row.get(col_return_1m, "")) if col_return_1m else ""
-        # include raw row if you want extra fields (uncomment next line)
-        # item.update({k: (v if v != "" else None) for k, v in row.items()})
+        item["5d_return"] = format_pct_value(row.get('5day_change', "")) if "5day_change" else ""
         stocks.append(item)
     # apply sort in-place
     stocks.sort(key=sort_key)
@@ -281,6 +281,81 @@ def auto_data():
     # default fallback
     # static_data.append(average)
     return jsonify({"data": static_data})
+
+
+ET_URL = "https://economictimes.indiatimes.com/markets/fii-dii-activity"
+
+# Simple cache
+_cache = {"df": None, "fetched_at": None}
+CACHE_TTL = timedelta(minutes=5)  # change as needed
+
+
+def fetch_and_cache_df(force_refresh: bool = False) -> pd.DataFrame:
+    """Fetch the combined table and cache it for CACHE_TTL unless force_refresh is True."""
+    now = datetime.utcnow()
+    if not force_refresh and _cache["df"] is not None and _cache["fetched_at"]:
+        if now - _cache["fetched_at"] < CACHE_TTL:
+            return _cache["df"]
+
+    # fetch fresh
+    tables = pd.read_html(ET_URL)
+    df = pd.concat(
+        [tables[3].reset_index(drop=True), tables[4].reset_index(drop=True)],
+        axis=1,
+    ).dropna(axis=1, how="all").reset_index(drop=True)
+
+    _cache["df"] = df
+    _cache["fetched_at"] = now
+    return df
+
+
+@app.route("/hist", methods=["GET"])
+def hist_html():
+    """Return HTML table (Bootstrap) of the combined FII/DII table."""
+    try:
+        df = fetch_and_cache_df()
+    except Exception as e:
+        return make_response(f"<h3>Fetch error: {e}</h3>", 502)
+
+    html_table = df.to_html(index=False, classes="table table-bordered table-striped", border=0)
+    html_page = f"""
+    <!doctype html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>FII / DII Historical Activity</title>
+      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+      <style>body{{margin:20px;font-family:Arial, sans-serif}}h2{{text-align:center}}</style>
+    </head>
+    <body>
+      <h2>FII / DII Historical Activity</h2>
+      <div class="table-responsive">{html_table}</div>
+      <p style="font-size:12px;color:gray">Updated: {_cache['fetched_at'].strftime('%Y-%m-%d %H:%M:%S') if _cache['fetched_at'] else 'N/A'} UTC</p>
+    </body>
+    </html>
+    """
+    return html_page
+
+
+@app.route("/hist/json", methods=["GET"])
+def hist_json():
+    """Return JSON records of the combined table."""
+    try:
+        df = fetch_and_cache_df()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+
+    # optional: convert numeric columns to numbers where possible
+    records = df.fillna("").to_dict(orient="records")
+    return jsonify({"count": len(records), "data": records})
+
+
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok", "cached_at": _cache["fetched_at"].isoformat() if _cache["fetched_at"] else None})
+
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=4000, debug=True)
