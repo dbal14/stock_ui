@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 import random
 import pandas as pd
 from metrics import sample_metrics
+import os
+from stocks import load_stocks_df,build_stocks_payload
 app = Flask(__name__)
 CORS(app)
 
@@ -13,139 +15,16 @@ def metrics():
         "metrics": sample_metrics(),
     })
 
-
-def format_pct(value):
-    """Return a string like +1.23% or -0.45%"""
-    return f"{value:+.2f}%"
-
-# CSV_PATH = r"C:\Users\deepa\Downloads\nifty-50.csv"
-CSV_PATH = r"C:\Users\deepa\Downloads\data1.csv"
-def load_stocks_df(path):
-    # Try to read CSV; if it fails, return empty DataFrame
-    try:
-        df = pd.read_csv(path, dtype=str).fillna("")  # read everything as string to avoid dtype issues
-        # normalize column names by stripping whitespace
-        df.columns = [c.strip() for c in df.columns]
-        return df
-    except Exception as e:
-        print(f"Failed to load CSV at {path}: {e}")
-        return pd.DataFrame()
-
-# Load once at startup (restart app to reload file). If you want fresh reads, call load_stocks_df inside the route.
+CSV_PATH = os.environ.get("CSV_PATH", r"C:\Users\deepa\Downloads\data1.csv")
+# load once
 STOCKS_DF = load_stocks_df(CSV_PATH)
-def parse_return(val):
-    """
-    Parse a return value and return a float.
-    Accepts strings like '+3.24%', '-1.2%', '3.5', or numeric types.
-    On parse failure returns 0.0
-    """
-    try:
-        if val is None:
-            return 0.0
-        s = str(val).strip()
-        if s == "":
-            return 0.0
-        # Remove trailing percent sign and plus sign if present
-        s = s.replace('%', '').replace('+', '')
-        return float(s)
-    except Exception:
-        return 0.0
-
-def sort_key(stock):
-    # parse numerical returns
-    d = parse_return(stock.get("day_return", 0))
-    w = parse_return(stock.get("weekly_return", 0))
-    m = parse_return(stock.get("monthly_return", 0))
-
-    # count how many of the three are negative
-    neg_count = sum(1 for v in (d, w, m) if v < 0)
-
-    # total (or average) to use as tie-breaker: higher total -> comes first
-    total = d + w + m
-
-    # sort by (neg_count ascending, -total descending)
-    return (neg_count, -total)
-
-
-def format_pct_value(val):
-    # If already formatted (endswith '%') return as-is
-    if isinstance(val, str) and val.strip().endswith("%"):
-        return val.strip()
-    try:
-        f = float(val)
-        return f"{f:+.2f}%"
-    except Exception:
-        return str(val or "")
-
 @app.route("/api/stocks")
 def get_stocks():
-    """
-    Returns JSON of stocks read from CSV.
-    Optional query params:
-      - tickers: comma-separated list to filter by name, bse or nse code (case-insensitive)
-      - n: integer limit (# rows)
-    """
-    global STOCKS_DF
-
-    if STOCKS_DF.empty:
-        return jsonify({
-            "generated_at": datetime.utcnow().isoformat() + "Z",
-            "count": 0,
-            "stocks": [],
-            "error": f"No CSV loaded at {CSV_PATH}"
-        }), 200
-
-    # Work on a copy
-    df = STOCKS_DF.copy()
-
-    # Optional filtering by tickers (matches Name, BSE Code, NSE Code if present)
+    # read optional query params
     tickers_q = request.args.get("tickers", default=None, type=str)
-    if tickers_q:
-        wanted = [t.strip().upper() for t in tickers_q.split(",") if t.strip()]
-        def match_row(row):
-            # check several possible columns that might contain the ticker/name
-            name = str(row.get("Name", "") or row.get("Symbol", "") or row.get("NSE Code", "")).upper()
-            bse = str(row.get("BSE Code", "")).upper()
-            nse = str(row.get("NSE Code", "")).upper()
-            for t in wanted:
-                if t == name or t == bse or t == nse:
-                    return True
-            return False
-        df = df[df.apply(match_row, axis=1)]
-
-    # Optional limit n
     n = request.args.get("n", default=None, type=int)
-    if n is not None and n > 0:
-        df = df.head(n)
-
-    # Build standardized output
-    stocks = []
-    # Try to find column names used in your CSV (fall back to common alternatives)
-    col_name = next((c for c in df.columns if c.lower() in ("name", "symbol")), None)
-    col_return_1d = next((c for c in df.columns if c.lower() in ("return over 1day", "return over 1 day", "return_1day", "1d")), None)
-    col_return_1d = next((c for c in df.columns if c.lower() in ("return over 1day", "return over 1 day", "return_1day", "1d")), None)
-    col_return_1w = next((c for c in df.columns if c.lower() in ("return over 1week", "return over 1 week", "return_1week", "1w")), None)
-    col_return_1m = next((c for c in df.columns if c.lower() in ("return over 1month", "return over 1 month", "return_1month", "1m")), None)
-
-    for _, row in df.iterrows():
-        item = {}
-        item["name"] = (row.get(col_name, "") if col_name else row.get("Name", "") or row.get("Symbol", "") or "")
-        item["day_return"] = format_pct_value(row.get(col_return_1d, "")) if col_return_1d else ""
-        item["weekly_return"] = format_pct_value(row.get(col_return_1w, "")) if col_return_1w else ""
-        item["monthly_return"] = format_pct_value(row.get(col_return_1m, "")) if col_return_1m else ""
-        item["5d_return"] = format_pct_value(row.get('5day_change', "")) if "5day_change" else ""
-        stocks.append(item)
-    # apply sort in-place
-    stocks.sort(key=sort_key)
-    payload = {
-        "generated_at": datetime.utcnow().isoformat() + "Z",
-        "count": len(stocks),
-        "stocks": stocks,
-    }
+    payload = build_stocks_payload(STOCKS_DF, CSV_PATH, tickers_q=tickers_q, n=n)
     return jsonify(payload)
-
-
-
 
 @app.route("/api/random_timeseries")
 def random_timeseries():
