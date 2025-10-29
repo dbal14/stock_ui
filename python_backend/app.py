@@ -29,5 +29,12 @@ def get_stocks():
     payload = build_stocks_payload(STOCKS_DF, CSV_PATH, tickers_q=tickers_q, n=n)
     return jsonify(payload)
 
+path=r"D:\dashboard\dashboard_project_full_data\dashboard_project_python_only\all_data\day_week_month_summery.csv"
+@app.route("/api/summary")
+def get_summary():
+    df=pd.read_csv(path)
+    data=df.to_dict(orient='records')
+    return jsonify({"summary":data})
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=4000, debug=True)

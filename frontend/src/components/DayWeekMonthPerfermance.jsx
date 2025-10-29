@@ -45,36 +45,36 @@ const SummaryDashboard = ({ apiUrl = "http://127.0.0.1:4000/api/summary" }) => {
           <table className="min-w-full table-auto text-left">
             <thead>
               <tr className="bg-gray-50">
-                <th className="px-4 py-2 text-sm font-bold text-gray-700">Stock Name</th>
-                <th className="px-4 py-2 text-sm font-bold text-gray-700">5 Day Performance</th>
-                <th className="px-4 py-2 text-sm font-bold text-gray-700">Weekly Performance</th>
-                <th className="px-4 py-2 text-sm font-bold text-gray-700">Monthly Performance</th>
+                <th className="px-4 py-2 text-xs text-gray-800 uppercase tracking-wide">Stock Name</th>
+                <th className="px-4 py-2 text-xs text-gray-800 uppercase tracking-wide">5 Day Performance</th>
+                <th className="px-4 py-2 text-xs text-gray-800 uppercase tracking-wide">Weekly Performance</th>
+                <th className="px-4 py-2 text-xs text-gray-800 uppercase tracking-wide">Monthly Performance</th>
               </tr>
             </thead>
             <tbody>
               {data.map((item, idx) => (
                 <tr key={idx} className="border-t hover:bg-gray-50">
-                  <td className="px-4 py-3 font-semibold text-sm text-gray-800">{item.symbol}</td>
+                  <td className="px-4 py-2 text-xs text-gray-700">{item.symbol}</td>
 
-                  <td className="px-4 py-3 text-sm">
+                  <td className="px-4 py-2 text-xs">
                     {item["5D_Change"].map((val, i) => (
-                      <span key={i} className={`mr-1 text-xs ${val >= 0 ? "text-green-700" : "text-red-700"}`}>
+                      <span key={i} className={`mr-1 ${val >= 0 ? "text-green-700" : "text-red-700"}`}>
                         {val}%
                       </span>
                     ))}
                   </td>
 
-                  <td className="px-4 py-3 text-sm">
+                  <td className="px-4 py-2 text-xs">
                     {item["5W_Change"].map((val, i) => (
-                      <span key={i} className={`mr-1 text-xs ${val >= 0 ? "text-green-700" : "text-red-700"}`}>
+                      <span key={i} className={`mr-1 ${val >= 0 ? "text-green-700" : "text-red-700"}`}>
                         {val}%
                       </span>
                     ))}
                   </td>
 
-                  <td className="px-4 py-3 text-sm">
+                  <td className="px-4 py-2 text-xs">
                     {item["5M_Change"].map((val, i) => (
-                      <span key={i} className={`mr-1 text-xs ${val >= 0 ? "text-green-700" : "text-red-700"}`}>
+                      <span key={i} className={`mr-1 ${val >= 0 ? "text-green-700" : "text-red-700"}`}>
                         {val}%
                       </span>
                     ))}
