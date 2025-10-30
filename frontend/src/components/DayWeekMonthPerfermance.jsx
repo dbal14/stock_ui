@@ -28,55 +28,48 @@ export default function SummaryResizableTable({
   // column widths state (px)
   const [colWidths, setColWidths] = useState(() => columns.map((c) => c.initialWidth || 150));
 
-  // dragging state
+  // dragging state kept in ref to avoid re-renders
   const dragState = useRef({ dragging: false, startX: 0, colIndex: null, startWidths: [] });
 
-  useEffect(() => {
-    const onMove = (e) => {
-      if (!dragState.current.dragging) return;
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const delta = clientX - dragState.current.startX;
-      const idx = dragState.current.colIndex;
-      const newWidths = [...dragState.current.startWidths];
-      const minWidth = 60;
-      const maxDelta = newWidths[idx + 1] ? newWidths[idx + 1] - minWidth : delta;
-      let appliedDelta = Math.max(-newWidths[idx] + minWidth, Math.min(delta, maxDelta));
-      newWidths[idx] = Math.max(minWidth, dragState.current.startWidths[idx] + appliedDelta);
-      if (newWidths[idx + 1] !== undefined) newWidths[idx + 1] = Math.max(minWidth, dragState.current.startWidths[idx + 1] - appliedDelta);
-      setColWidths(newWidths);
-      e.preventDefault();
-    };
+  // --- move/onUp handlers defined once so they can be added/removed reliably ---
+  const onMove = (e) => {
+    if (!dragState.current.dragging) return;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const delta = clientX - dragState.current.startX;
+    const idx = dragState.current.colIndex;
+    const newWidths = [...dragState.current.startWidths];
+    const minWidth = 60;
+    const maxDelta = newWidths[idx + 1] ? newWidths[idx + 1] - minWidth : delta;
+    let appliedDelta = Math.max(-newWidths[idx] + minWidth, Math.min(delta, maxDelta));
+    newWidths[idx] = Math.max(minWidth, dragState.current.startWidths[idx] + appliedDelta);
+    if (newWidths[idx + 1] !== undefined)
+      newWidths[idx + 1] = Math.max(minWidth, dragState.current.startWidths[idx + 1] - appliedDelta);
+    setColWidths(newWidths);
+    e.preventDefault();
+  };
 
-    const onUp = () => {
-      if (!dragState.current.dragging) return;
-      dragState.current.dragging = false;
-      document.body.style.userSelect = '';
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      document.removeEventListener('touchmove', onMove);
-      document.removeEventListener('touchend', onUp);
-    };
+  const onUp = () => {
+    if (!dragState.current.dragging) return;
+    dragState.current.dragging = false;
+    document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onUp);
+  };
 
-    if (dragState.current.dragging) {
-      document.body.style.userSelect = 'none';
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-      document.addEventListener('touchmove', onMove, { passive: false });
-      document.addEventListener('touchend', onUp);
-    }
-
-    return () => {
-      document.body.style.userSelect = '';
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      document.removeEventListener('touchmove', onMove);
-      document.removeEventListener('touchend', onUp);
-    };
-  }, [colWidths]);
-
+  // startDrag now registers listeners immediately so dragging works
   const startDrag = (e, idx) => {
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     dragState.current = { dragging: true, startX: clientX, colIndex: idx, startWidths: [...colWidths] };
+    // prevent text selection while dragging
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onUp);
+    // prevent default to avoid unexpected browser behaviors
+    e.preventDefault();
   };
 
   const onKeyResize = (e, idx) => {
@@ -128,6 +121,14 @@ export default function SummaryResizableTable({
     };
 
     fetchData();
+
+    // cleanup on unmount: ensure listeners removed
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onUp);
+    };
   }, [apiUrl]);
 
   const renderPercentList = (arr = []) => (
