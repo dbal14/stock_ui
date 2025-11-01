@@ -1,29 +1,45 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 
+// Component: resizable, sortable summary table for stock data
+// - Fetches data from an API returning { summary: [...] }
+// - Renders 4 columns (Stock Name, Day Return, Performance, More)
+// - Columns can be resized via mouse/touch drag or keyboard arrows
+// - Sorting applies to Day/Week/Month by averaging the respective arrays
 export default function SummaryResizableTable({
   apiUrl = 'http://127.0.0.1:4000/api/summary',
   initialColumns,
 }) {
+  // ------------------------------
+  // 1) Basic state: data loading, error
+  // ------------------------------
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Columns: Stock, Performance, More
+  // ------------------------------
+  // 2) Column configuration
+  // ------------------------------
+  // Columns: Stock, Performance, More (+ Day Return)
+  // Each column defines a key used to read from each row and an initial width.
   const defaultColumns = [
     { key: 'symbol', label: 'Stock Name', initialWidth: 220 },
-    { key: 'performance', label: 'Performance', initialWidth: 560 },
-    { key: 'metrics', label: 'More', initialWidth: 240 },
+    { key: 'current', label: 'Day Return', initialWidth: 120 }, // numerical or string value
+    { key: 'performance', label: 'Performance', initialWidth: 560 }, // shows chips for day/week/month series
+    { key: 'metrics', label: 'More', initialWidth: 240 }, // positive/negative summary & pos%
   ];
   const columns = initialColumns || defaultColumns;
 
-  // column widths state (px)
+  // Column widths (px). We initialize from the provided column definitions.
   const [colWidths, setColWidths] = useState(() => columns.map((c) => c.initialWidth || 150));
 
-  // --- Sorting ---
-  // sortKey: 'day' | 'week' | 'month' | null ; sortDir: 'asc' | 'desc'
+  // ------------------------------
+  // 3) Sorting state & helpers
+  // ------------------------------
+  // sortKey can be 'day' | 'week' | 'month' | null. sortDir can be 'asc' | 'desc'.
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('desc');
 
+  // Toggle sorting when user clicks the Day/Week/Month buttons.
   const toggleSort = (key) => {
     if (sortKey === key) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -33,6 +49,7 @@ export default function SummaryResizableTable({
     }
   };
 
+  // Average helper for arrays of values (strings or numbers). Ignores NaN by coercing to 0.
   const aggAvg = (arr) => {
     if (!arr || !arr.length) return 0;
     let s = 0;
@@ -40,8 +57,10 @@ export default function SummaryResizableTable({
     return s / arr.length;
   };
 
+  // Map logical sort keys to the data fields holding the arrays.
   const fieldMap = { day: '5D_Change', week: '5W_Change', month: '5M_Change' };
 
+  // Compute sorted view of data only when inputs change (memoized for performance).
   const sortedData = useMemo(() => {
     if (!sortKey) return data;
     const field = fieldMap[sortKey];
@@ -54,26 +73,38 @@ export default function SummaryResizableTable({
     return copy;
   }, [data, sortKey, sortDir]);
 
-  // dragging state kept in ref to avoid re-renders
+  // ------------------------------
+  // 4) Column resize (drag/touch/keyboard)
+  // ------------------------------
+  // Use a ref to hold transient drag state so we don't trigger rerenders while dragging.
   const dragState = useRef({ dragging: false, startX: 0, colIndex: null, startWidths: [] });
 
-  // --- move/onUp handlers defined once so they can be added/removed reliably ---
+  // onMove: runs while dragging. Adjusts the active column and its neighbor, respecting min width.
   const onMove = (e) => {
     if (!dragState.current.dragging) return;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const delta = clientX - dragState.current.startX;
     const idx = dragState.current.colIndex;
+
     const newWidths = [...dragState.current.startWidths];
     const minWidth = 60;
+
+    // Prevent shrinking current column below min and stealing too much from the right neighbor
     const maxDelta = newWidths[idx + 1] ? newWidths[idx + 1] - minWidth : delta;
     const appliedDelta = Math.max(-newWidths[idx] + minWidth, Math.min(delta, maxDelta));
+
+    // Apply delta to current column
     newWidths[idx] = Math.max(minWidth, dragState.current.startWidths[idx] + appliedDelta);
+
+    // Inverse delta to next column (if exists) to keep total width more stable
     if (newWidths[idx + 1] !== undefined)
       newWidths[idx + 1] = Math.max(minWidth, dragState.current.startWidths[idx + 1] - appliedDelta);
+
     setColWidths(newWidths);
-    e.preventDefault();
+    e.preventDefault(); // avoid text selection on touch devices
   };
 
+  // onUp: stop dragging and remove listeners.
   const onUp = () => {
     if (!dragState.current.dragging) return;
     dragState.current.dragging = false;
@@ -84,7 +115,7 @@ export default function SummaryResizableTable({
     document.removeEventListener('touchend', onUp);
   };
 
-  // startDrag now registers listeners immediately so dragging works
+  // startDrag: initialize drag state and attach listeners immediately for smooth dragging.
   const startDrag = (e, idx) => {
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     dragState.current = { dragging: true, startX: clientX, colIndex: idx, startWidths: [...colWidths] };
@@ -96,6 +127,7 @@ export default function SummaryResizableTable({
     e.preventDefault();
   };
 
+  // Keyboard resize: left/right arrows adjust widths; Shift increases step size.
   const onKeyResize = (e, idx) => {
     const step = e.shiftKey ? 20 : 5;
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -103,7 +135,13 @@ export default function SummaryResizableTable({
       const next = [...colWidths];
       const minWidth = 60;
       const delta = dir * step;
-      const allowedDelta = Math.max(-next[idx] + minWidth, Math.min(delta, next[idx + 1] ? next[idx + 1] - minWidth : delta));
+
+      // Limit delta by minWidth constraints of current and neighbor columns
+      const allowedDelta = Math.max(
+        -next[idx] + minWidth,
+        Math.min(delta, next[idx + 1] ? next[idx + 1] - minWidth : delta)
+      );
+
       next[idx] = Math.max(minWidth, next[idx] + allowedDelta);
       if (next[idx + 1] !== undefined) next[idx + 1] = Math.max(minWidth, next[idx + 1] - allowedDelta);
       setColWidths(next);
@@ -111,7 +149,10 @@ export default function SummaryResizableTable({
     }
   };
 
-  // helper: safely parse JSON arrays and replace nan with 0
+  // ------------------------------
+  // 5) Data parsing helper
+  // ------------------------------
+  // Converts possibly-stringified JSON arrays to arrays of numbers, replacing NaN-like values with 0.
   const safeParseArray = (val) => {
     try {
       const arr = typeof val === 'string' ? JSON.parse(val) : val;
@@ -129,6 +170,10 @@ export default function SummaryResizableTable({
     }
   };
 
+  // ------------------------------
+  // 6) Data fetching
+  // ------------------------------
+  // Fetch once on mount (and when apiUrl changes). Normalizes 5D/5W/5M arrays into numeric arrays.
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -138,6 +183,7 @@ export default function SummaryResizableTable({
         const json = await res.json();
         const parsed = (json.summary || []).map((item) => ({
           ...item,
+          current: item['Return over 1day'], // populate Day Return column
           '5D_Change': safeParseArray(item['5D_Change'] ?? item['5d_change'] ?? item['5D']),
           '5W_Change': safeParseArray(item['5W_Change'] ?? item['5w_change'] ?? item['5W']),
           '5M_Change': safeParseArray(item['5M_Change'] ?? item['5m_change'] ?? item['5M']),
@@ -153,6 +199,7 @@ export default function SummaryResizableTable({
 
     fetchData();
 
+    // Cleanup any dangling listeners on unmount
     return () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
@@ -161,7 +208,10 @@ export default function SummaryResizableTable({
     };
   }, [apiUrl]);
 
-  // small value "chips" with color: +ve green, -ve red
+  // ------------------------------
+  // 7) Small UI helpers for cells
+  // ------------------------------
+  // Renders a list of small percentage chips; green for positive, red for negative.
   const renderPercentList = (arr = []) => (
     <div className="flex flex-wrap items-center">
       {arr.map((val, i) => (
@@ -179,7 +229,7 @@ export default function SummaryResizableTable({
     </div>
   );
 
-  // Performance cell: labels on left, values on right; very tight spacing
+  // Performance column: left labels (Day/Week/Month), right value chips.
   const renderPerformanceCell = (row) => (
     <div className="grid grid-cols-[45px_minmax(0,1fr)] gap-y-2 items-start">
       <div className="text-[9px] text-gray-500 self-center">Day</div>
@@ -193,7 +243,7 @@ export default function SummaryResizableTable({
     </div>
   );
 
-  // More column: Pos/Neg icons and Pos % with sign coloring
+  // More column: shows Pos% with sign color + counts of positive/negative changes for each period.
   const renderMetricsCell = (row) => {
     const fmt = (n, suf = '') => (n === undefined || n === null ? '-' : `${n}${suf}`);
     const pctCls = (n) => (Number(n) >= 0 ? 'text-green-700' : 'text-red-700');
@@ -225,11 +275,24 @@ export default function SummaryResizableTable({
     );
   };
 
+  // Day Return rendering helper: green if >= 0, red if < 0, dash if empty
+  const renderDayReturn = (val) => {
+    if (val === undefined || val === null || val === '') return <span className="text-gray-400">-</span>;
+    const num = Number(val);
+    if (Number.isNaN(num)) return <span className="text-gray-400">-</span>;
+    const cls = num >= 0 ? 'text-green-700' : 'text-red-700';
+    return <span className={`text-[10px] font-medium ${cls}`}>{num}%</span>;
+  };
+
+  // ------------------------------
+  // 8) Render
+  // ------------------------------
   return (
     <div className="p-4 bg-white rounded-2xl shadow border border-gray-200">
+      {/* Title */}
       <h2 className="text-[11px] font-semibold text-center text-blue-600 mb-3">Stocks Summary</h2>
 
-      {/* Sort controls */}
+      {/* Sort controls (Day/Week/Month) */}
       <div className="mb-2 flex items-center gap-2 text-[9px]">
         <span className="text-gray-500">Sort by</span>
         <button
@@ -255,19 +318,23 @@ export default function SummaryResizableTable({
         )}
       </div>
 
+      {/* Loading & error states */}
       {loading && <div className="text-center text-gray-500 text-[10px]">Loading...</div>}
       {error && <div className="text-center text-red-500 text-[10px]">Error: {error}</div>}
 
+      {/* Desktop/tablet table */}
       {!loading && !error && sortedData.length > 0 && (
         <div className="overflow-x-auto">
           <div className="hidden sm:block border rounded-md overflow-auto">
             <div className="min-w-max">
-              {/* Header */}
+              {/* Header row with resizers */}
               <div className="flex bg-gray-50 text-sm font-medium text-gray-700 border-b">
                 {columns.map((col, i) => (
                   <div key={col.key} style={{ width: colWidths[i] }} className="relative px-3 py-2 flex items-center">
+                    {/* Header label */}
                     <div className="flex-1 text-left truncate">{col.label}</div>
 
+                    {/* Resize handle (not on last column) */}
                     {i < columns.length - 1 && (
                       <div
                         role="separator"
@@ -288,20 +355,26 @@ export default function SummaryResizableTable({
                 ))}
               </div>
 
-              {/* Rows */}
+              {/* Data rows */}
               {sortedData.map((row, rIdx) => (
                 <div key={rIdx} className="flex text-sm border-b even:bg-white odd:bg-gray-50">
                   {columns.map((col, i) => (
                     <div key={col.key} style={{ width: colWidths[i] }} className="px-3 py-2 truncate">
-                      {col.key === 'symbol' ? (
-                        <div className="text-[10px] font-medium text-gray-800">{row.symbol}</div>
-                      ) : col.key === 'performance' ? (
-                        renderPerformanceCell(row)
-                      ) : col.key === 'metrics' ? (
-                        renderMetricsCell(row)
-                      ) : (
-                        <div className="truncate">{String(row[col.key] ?? '')}</div>
-                      )}
+                      {(() => {
+                        if (col.key === 'symbol') {
+                          return <div className="text-[10px] font-medium text-gray-800">{row.symbol}</div>;
+                        }
+                        if (col.key === 'performance') {
+                          return renderPerformanceCell(row);
+                        }
+                        if (col.key === 'metrics') {
+                          return renderMetricsCell(row);
+                        }
+                        if (col.key === 'current') {
+                          return renderDayReturn(row.current);
+                        }
+                        return <div className="truncate">{String(row[col.key] ?? '')}</div>;
+                      })()}
                     </div>
                   ))}
                 </div>
@@ -309,7 +382,7 @@ export default function SummaryResizableTable({
             </div>
           </div>
 
-          {/* Mobile stacked */}
+          {/* Mobile: stacked cards */}
           <div className="sm:hidden space-y-2">
             {sortedData.map((row, rIdx) => (
               <div key={rIdx} className="border rounded-md p-3 bg-white shadow-sm">
@@ -317,13 +390,13 @@ export default function SummaryResizableTable({
                   <div key={col.key} className="mb-2 last:mb-0">
                     <div className="text-[9px] text-gray-500">{col.label}</div>
                     <div className="text-[10px] font-medium">
-                      {col.key === 'symbol'
-                        ? row.symbol
-                        : col.key === 'performance'
-                        ? renderPerformanceCell(row)
-                        : col.key === 'metrics'
-                        ? renderMetricsCell(row)
-                        : String(row[col.key] ?? '')}
+                      {(() => {
+                        if (col.key === 'symbol') return row.symbol;
+                        if (col.key === 'performance') return renderPerformanceCell(row);
+                        if (col.key === 'metrics') return renderMetricsCell(row);
+                        if (col.key === 'current') return renderDayReturn(row.current);
+                        return String(row[col.key] ?? '');
+                      })()}
                     </div>
                   </div>
                 ))}
@@ -333,8 +406,12 @@ export default function SummaryResizableTable({
         </div>
       )}
 
-      {!loading && !error && sortedData.length === 0 && <div className="text-center text-gray-500 text-[10px]">No data available</div>}
+      {/* Empty state */}
+      {!loading && !error && sortedData.length === 0 && (
+        <div className="text-center text-gray-500 text-[10px]">No data available</div>
+      )}
 
+      {/* Footer: reset widths + tips */}
       <div className="mt-3 flex items-center gap-3">
         <button
           className="px-3 py-1 rounded bg-indigo-600 text-white text-[10px] hover:bg-indigo-700"
@@ -349,4 +426,28 @@ export default function SummaryResizableTable({
       </div>
     </div>
   );
+}
+
+// ------------------------------
+// 9) Tiny runtime tests (Dev-only console checks)
+// These help catch regressions quickly while developing.
+// ------------------------------
+if (typeof window !== 'undefined') {
+  // safeParseArray
+  (function testSafeParseArray() {
+    const input = '["1", "nan", null, 2]';
+    const out = (function localParse(val){
+      try { const arr = typeof val === 'string' ? JSON.parse(val) : val; if (!Array.isArray(arr)) return []; return arr.map((v) => v==null || Number.isNaN(Number(v)) || String(v).toLowerCase()==='nan' ? 0 : Number(v)); } catch { return []; }
+    })(input);
+    console.assert(Array.isArray(out) && out.length === 4 && out[0] === 1 && out[1] === 0 && out[2] === 0 && out[3] === 2, 'safeParseArray test failed');
+  })();
+
+  // aggAvg
+  (function testAggAvg() {
+    const avg = (arr) => {
+      if (!arr || !arr.length) return 0; let s = 0; for (let i=0;i<arr.length;i++) s += Number(arr[i])||0; return s/arr.length;
+    };
+    console.assert(avg([1,2,3]) === 2, 'aggAvg test failed');
+    console.assert(avg([]) === 0, 'aggAvg empty test failed');
+  })();
 }
