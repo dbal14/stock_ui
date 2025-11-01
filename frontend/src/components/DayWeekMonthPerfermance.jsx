@@ -1,12 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
 
-// SummaryResizableTable
-// - Fetches summary data from API (same parsing you used)
-// - Replaces NaN with 0 inside array fields
-// - Renders a resizable table (drag handles + keyboard)
-// - Responsive: stacks rows on small screens
-// - Props: apiUrl, initialColumns (optional)
-
 export default function SummaryResizableTable({
   apiUrl = 'http://127.0.0.1:4000/api/summary',
   initialColumns,
@@ -15,18 +8,17 @@ export default function SummaryResizableTable({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // default columns if user doesn't pass any
+  // Two columns only
   const defaultColumns = [
-    { key: 'symbol', label: 'Stock Name', initialWidth: 220 },
-    { key: '5D_Change', label: '5 Day Performance', initialWidth: 320 },
-    { key: '5W_Change', label: 'Weekly Performance', initialWidth: 320 },
-    { key: '5M_Change', label: 'Monthly Performance', initialWidth: 320 },
+    { key: 'symbol', label: 'Stock Name', initialWidth: 260 },
+    { key: 'performance', label: 'Performance', initialWidth: 700 },
   ];
-
   const columns = initialColumns || defaultColumns;
 
   // column widths state (px)
-  const [colWidths, setColWidths] = useState(() => columns.map((c) => c.initialWidth || 150));
+  const [colWidths, setColWidths] = useState(() =>
+    columns.map((c) => c.initialWidth || 150)
+  );
 
   // dragging state kept in ref to avoid re-renders
   const dragState = useRef({ dragging: false, startX: 0, colIndex: null, startWidths: [] });
@@ -40,7 +32,7 @@ export default function SummaryResizableTable({
     const newWidths = [...dragState.current.startWidths];
     const minWidth = 60;
     const maxDelta = newWidths[idx + 1] ? newWidths[idx + 1] - minWidth : delta;
-    let appliedDelta = Math.max(-newWidths[idx] + minWidth, Math.min(delta, maxDelta));
+    const appliedDelta = Math.max(-newWidths[idx] + minWidth, Math.min(delta, maxDelta));
     newWidths[idx] = Math.max(minWidth, dragState.current.startWidths[idx] + appliedDelta);
     if (newWidths[idx + 1] !== undefined)
       newWidths[idx + 1] = Math.max(minWidth, dragState.current.startWidths[idx + 1] - appliedDelta);
@@ -62,13 +54,11 @@ export default function SummaryResizableTable({
   const startDrag = (e, idx) => {
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     dragState.current = { dragging: true, startX: clientX, colIndex: idx, startWidths: [...colWidths] };
-    // prevent text selection while dragging
     document.body.style.userSelect = 'none';
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
     document.addEventListener('touchmove', onMove, { passive: false });
     document.addEventListener('touchend', onUp);
-    // prevent default to avoid unexpected browser behaviors
     e.preventDefault();
   };
 
@@ -92,7 +82,14 @@ export default function SummaryResizableTable({
     try {
       const arr = typeof val === 'string' ? JSON.parse(val) : val;
       if (!Array.isArray(arr)) return [];
-      return arr.map((v) => (v === null || v === undefined || Number.isNaN(Number(v)) || String(v).toLowerCase() === 'nan' ? 0 : Number(v)));
+      return arr.map((v) =>
+        v === null ||
+        v === undefined ||
+        Number.isNaN(Number(v)) ||
+        String(v).toLowerCase() === 'nan'
+          ? 0
+          : Number(v)
+      );
     } catch (err) {
       return [];
     }
@@ -122,7 +119,6 @@ export default function SummaryResizableTable({
 
     fetchData();
 
-    // cleanup on unmount: ensure listeners removed
     return () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
@@ -131,13 +127,35 @@ export default function SummaryResizableTable({
     };
   }, [apiUrl]);
 
+  // small value "chips"
   const renderPercentList = (arr = []) => (
     <div className="flex flex-wrap items-center">
       {arr.map((val, i) => (
-        <span key={i} className={`mr-1 text-xs ${val >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+        <span
+          key={i}
+          className={`mr-1 mb-1 inline-flex items-center px-1.5 py-0.5 rounded text-xs border ${
+            val >= 0
+              ? 'text-green-700 border-green-200 bg-green-50'
+              : 'text-red-700 border-red-200 bg-red-50'
+          }`}
+        >
           {val}%
         </span>
       ))}
+    </div>
+  );
+
+  // Performance cell: labels on left, values on right; very tight spacing
+  const renderPerformanceCell = (row) => (
+    <div className="grid grid-cols-[45px_minmax(0,1fr)] gap-y-2 items-start">
+      <div className="text-[11px] text-gray-500 self-center">Day</div>
+      <div>{renderPercentList(row['5D_Change'])}</div>
+
+      <div className="text-[11px] text-gray-500 self-center">Week</div>
+      <div>{renderPercentList(row['5W_Change'])}</div>
+
+      <div className="text-[11px] text-gray-500 self-center">Month</div>
+      <div>{renderPercentList(row['5M_Change'])}</div>
     </div>
   );
 
@@ -152,6 +170,7 @@ export default function SummaryResizableTable({
         <div className="overflow-x-auto">
           <div className="hidden sm:block border rounded-md overflow-auto">
             <div className="min-w-max">
+              {/* Header */}
               <div className="flex bg-gray-50 text-sm font-medium text-gray-700 border-b">
                 {columns.map((col, i) => (
                   <div key={col.key} style={{ width: colWidths[i] }} className="relative px-3 py-2 flex items-center">
@@ -177,18 +196,15 @@ export default function SummaryResizableTable({
                 ))}
               </div>
 
+              {/* Rows */}
               {data.map((row, rIdx) => (
-                <div key={rIdx} className={`flex text-sm border-b even:bg-white odd:bg-gray-50`}>
+                <div key={rIdx} className="flex text-sm border-b even:bg-white odd:bg-gray-50">
                   {columns.map((col, i) => (
                     <div key={col.key} style={{ width: colWidths[i] }} className="px-3 py-2 truncate">
                       {col.key === 'symbol' ? (
-                        <div className="text-xs text-gray-700">{row.symbol}</div>
-                      ) : col.key === '5D_Change' ? (
-                        renderPercentList(row['5D_Change'])
-                      ) : col.key === '5W_Change' ? (
-                        renderPercentList(row['5W_Change'])
-                      ) : col.key === '5M_Change' ? (
-                        renderPercentList(row['5M_Change'])
+                        <div className="text-sm font-medium text-gray-800">{row.symbol}</div>
+                      ) : col.key === 'performance' ? (
+                        renderPerformanceCell(row)
                       ) : (
                         <div className="truncate">{String(row[col.key] ?? '')}</div>
                       )}
@@ -203,11 +219,15 @@ export default function SummaryResizableTable({
           <div className="sm:hidden space-y-2">
             {data.map((row, rIdx) => (
               <div key={rIdx} className="border rounded-md p-3 bg-white shadow-sm">
-                {columns.map((col, i) => (
+                {columns.map((col) => (
                   <div key={col.key} className="mb-2 last:mb-0">
                     <div className="text-xs text-gray-500">{col.label}</div>
-                    <div className="text-sm font-medium truncate">
-                      {col.key === 'symbol' ? row.symbol : Array.isArray(row[col.key]) ? row[col.key].map((v,i)=>(<span key={i} className={`mr-1 text-xs ${v>=0? 'text-green-700':'text-red-700'}`}>{v}%</span>)) : String(row[col.key] ?? '')}
+                    <div className="text-sm font-medium">
+                      {col.key === 'symbol'
+                        ? row.symbol
+                        : col.key === 'performance'
+                        ? renderPerformanceCell(row)
+                        : String(row[col.key] ?? '')}
                     </div>
                   </div>
                 ))}
@@ -227,7 +247,9 @@ export default function SummaryResizableTable({
           Reset column widths
         </button>
 
-        <div className="text-sm text-gray-600">Tip: drag the thin area on the right of each header to resize. Use arrow keys when a resizer is focused.</div>
+        <div className="text-sm text-gray-600">
+          Tip: drag the thin area on the right of each header to resize. Use arrow keys when a resizer is focused.
+        </div>
       </div>
     </div>
   );
