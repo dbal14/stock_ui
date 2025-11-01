@@ -133,7 +133,7 @@ export default function SummaryResizableTable({
       {arr.map((val, i) => (
         <span
           key={i}
-          className={`mr-1 mb-1 inline-flex items-center px-1.5 py-0.5 rounded text-xs border ${
+          className={`mr-1 mb-1 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] border ${
             val >= 0
               ? 'text-green-700 border-green-200 bg-green-50'
               : 'text-red-700 border-red-200 bg-red-50'
@@ -148,23 +148,23 @@ export default function SummaryResizableTable({
   // Performance cell: labels on left, values on right; very tight spacing
   const renderPerformanceCell = (row) => (
     <div className="grid grid-cols-[45px_minmax(0,1fr)] gap-y-2 items-start">
-      <div className="text-[11px] text-gray-500 self-center">Day</div>
+      <div className="text-[9px] text-gray-500 self-center">Day</div>
       <div>{renderPercentList(row['5D_Change'])}</div>
 
-      <div className="text-[11px] text-gray-500 self-center">Week</div>
+      <div className="text-[9px] text-gray-500 self-center">Week</div>
       <div>{renderPercentList(row['5W_Change'])}</div>
 
-      <div className="text-[11px] text-gray-500 self-center">Month</div>
+      <div className="text-[9px] text-gray-500 self-center">Month</div>
       <div>{renderPercentList(row['5M_Change'])}</div>
     </div>
   );
 
   return (
     <div className="p-4 bg-white rounded-2xl shadow border border-gray-200">
-      <h2 className="text-lg font-semibold text-center text-blue-600 mb-4">Stocks Summary</h2>
+      <h2 className="text-[11px] font-semibold text-center text-blue-600 mb-4">Stocks Summary</h2>
 
-      {loading && <div className="text-center text-gray-500">Loading...</div>}
-      {error && <div className="text-center text-red-500">Error: {error}</div>}
+      {loading && <div className="text-center text-gray-500 text-[10px]">Loading...</div>}
+      {error && <div className="text-center text-red-500 text-[10px]">Error: {error}</div>}
 
       {!loading && !error && data.length > 0 && (
         <div className="overflow-x-auto">
@@ -202,7 +202,7 @@ export default function SummaryResizableTable({
                   {columns.map((col, i) => (
                     <div key={col.key} style={{ width: colWidths[i] }} className="px-3 py-2 truncate">
                       {col.key === 'symbol' ? (
-                        <div className="text-sm font-medium text-gray-800">{row.symbol}</div>
+                        <div className="text-[10px] font-medium text-gray-800">{row.symbol}</div>
                       ) : col.key === 'performance' ? (
                         renderPerformanceCell(row)
                       ) : (
@@ -221,8 +221,8 @@ export default function SummaryResizableTable({
               <div key={rIdx} className="border rounded-md p-3 bg-white shadow-sm">
                 {columns.map((col) => (
                   <div key={col.key} className="mb-2 last:mb-0">
-                    <div className="text-xs text-gray-500">{col.label}</div>
-                    <div className="text-sm font-medium">
+                    <div className="text-[9px] text-gray-500">{col.label}</div>
+                    <div className="text-[10px] font-medium">
                       {col.key === 'symbol'
                         ? row.symbol
                         : col.key === 'performance'
@@ -237,17 +237,17 @@ export default function SummaryResizableTable({
         </div>
       )}
 
-      {!loading && !error && data.length === 0 && <div className="text-center text-gray-500">No data available</div>}
+      {!loading && !error && data.length === 0 && <div className="text-center text-gray-500 text-[10px]">No data available</div>}
 
       <div className="mt-3 flex items-center gap-3">
         <button
-          className="px-3 py-1 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700"
+          className="px-3 py-1 rounded bg-indigo-600 text-white text-[10px] hover:bg-indigo-700"
           onClick={() => setColWidths(columns.map((c) => c.initialWidth || 150))}
         >
           Reset column widths
         </button>
 
-        <div className="text-sm text-gray-600">
+        <div className="text-[9px] text-gray-600">
           Tip: drag the thin area on the right of each header to resize. Use arrow keys when a resizer is focused.
         </div>
       </div>
