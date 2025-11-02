@@ -35,11 +35,11 @@ export default function SummaryResizableTable({
   // ------------------------------
   // 3) Sorting state & helpers
   // ------------------------------
-  // sortKey can be 'day' | 'week' | 'month' | null. sortDir can be 'asc' | 'desc'.
+  // sortKey can be 'day' | 'week' | 'month' | 'dayReturn' | null. sortDir can be 'asc' | 'desc'.
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('desc');
 
-  // Toggle sorting when user clicks the Day/Week/Month buttons.
+  // Toggle sorting when user clicks the Day/Week/Month/DayReturn buttons.
   const toggleSort = (key) => {
     if (sortKey === key) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -63,6 +63,19 @@ export default function SummaryResizableTable({
   // Compute sorted view of data only when inputs change (memoized for performance).
   const sortedData = useMemo(() => {
     if (!sortKey) return data;
+
+    // New: direct sort by Day Return ("current") without changing existing sorts
+    if (sortKey === 'dayReturn') {
+      const nv = (x) => {
+        const n = Number(x);
+        return Number.isNaN(n) ? 0 : n;
+      };
+      const copy = [...data];
+      copy.sort((a, b) => (sortDir === 'asc' ? nv(a.current) - nv(b.current) : nv(b.current) - nv(a.current)));
+      return copy;
+    }
+
+    // Existing: sort by averaged arrays for day/week/month
     const field = fieldMap[sortKey];
     const copy = [...data];
     copy.sort((a, b) => {
@@ -292,7 +305,7 @@ export default function SummaryResizableTable({
       {/* Title */}
       <h2 className="text-[11px] font-semibold text-center text-blue-600 mb-3">Stocks Summary</h2>
 
-      {/* Sort controls (Day/Week/Month) */}
+      {/* Sort controls (Day/Week/Month/Day Return) */}
       <div className="mb-2 flex items-center gap-2 text-[9px]">
         <span className="text-gray-500">Sort by</span>
         <button
@@ -312,6 +325,12 @@ export default function SummaryResizableTable({
           onClick={() => toggleSort('month')}
         >
           Month {sortKey==='month' ? (sortDir==='asc'?'↑':'↓') : ''}
+        </button>
+        <button
+          className={`px-2 py-1 rounded border ${sortKey==='dayReturn' ? 'border-indigo-400 bg-indigo-50' : 'border-gray-200'} hover:border-indigo-300`}
+          onClick={() => toggleSort('dayReturn')}
+        >
+          Day Return {sortKey==='dayReturn' ? (sortDir==='asc'?'↑':'↓') : ''}
         </button>
         {sortKey && (
           <button className="ml-2 px-2 py-1 rounded border border-gray-200 hover:border-gray-300" onClick={() => { setSortKey(null); setSortDir('desc'); }}>Clear</button>
@@ -449,5 +468,23 @@ if (typeof window !== 'undefined') {
     };
     console.assert(avg([1,2,3]) === 2, 'aggAvg test failed');
     console.assert(avg([]) === 0, 'aggAvg empty test failed');
+  })();
+
+  // dayReturn comparator (asc/desc) basic check
+  (function testDayReturnSort() {
+    const nv = (x) => { const n = Number(x); return Number.isNaN(n) ? 0 : n; };
+    const rows = [{current: 1.2},{current: -0.5},{current: 'nan'},{current: 0}];
+    const asc = [...rows].sort((a,b)=> nv(a.current)-nv(b.current));
+    const desc = [...rows].sort((a,b)=> nv(b.current)-nv(a.current));
+    console.assert(asc[0].current === -0.5 && asc[3].current === 1.2, 'dayReturn asc sort failed');
+    console.assert(desc[0].current === 1.2 && desc[3].current === -0.5, 'dayReturn desc sort failed');
+  })();
+
+  // renderDayReturn-style class decision
+  (function testRenderDayReturnClass() {
+    const cls = (v) => { const n = Number(v); if (Number.isNaN(n)) return 'gray'; return n >= 0 ? 'green' : 'red'; };
+    console.assert(cls(0.1) === 'green', 'renderDayReturn should be green for positive');
+    console.assert(cls(-0.1) === 'red', 'renderDayReturn should be red for negative');
+    console.assert(cls('nan') === 'gray', 'renderDayReturn should be gray for NaN');
   })();
 }
