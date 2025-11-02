@@ -73,6 +73,17 @@ def watchlist():
         items = [s for s in _load_watchlist() if s != sym] if sym else []
         _save_watchlist(items)
         return jsonify({"ok": True, "symbols": items})
+    
+ 
+client=r"D:\dashboard\dashboard_project_full_data\dashboard_project_python_only\all_data\client_stock_data.csv"
+@app.route("/api/client", methods=["GET"])
+def get_client():
+    try:
+        df = pd.read_csv(client)
+        data = df.to_dict(orient='records')
+        return jsonify({"client": data, "status": "success"})
+    except Exception as e:
+        return jsonify({"error": str(e), "status": "failed"}), 500   
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=4000, debug=True)
