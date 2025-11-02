@@ -17,6 +17,55 @@ export default function SummaryResizableTable({
   const [error, setError] = useState(null);
 
   // ------------------------------
+  // Watchlist state (server-side persistence via Flask)
+  // ------------------------------
+  const baseApi = useMemo(() => apiUrl.replace('/api/summary', ''), [apiUrl]);
+  const [saved, setSaved] = useState(new Set());
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${baseApi}/api/watchlist`);
+        const j = await r.json();
+        setSaved(new Set((j.symbols || []).map(s => String(s).toUpperCase())));
+      } catch {
+        // ignore load errors (no watchlist yet)
+      }
+    })();
+  }, [baseApi]);
+
+  const addSymbol = async (symbol) => {
+    const sym = String(symbol).toUpperCase();
+    try {
+      await fetch(`${baseApi}/api/watchlist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: sym }),
+      });
+      setSaved(prev => new Set(prev).add(sym));
+    } catch {/* ignore */}
+  };
+
+  const removeSymbol = async (symbol) => {
+    const sym = String(symbol).toUpperCase();
+    try {
+      await fetch(`${baseApi}/api/watchlist`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: sym }),
+      });
+      setSaved(prev => {
+        const next = new Set(prev);
+        next.delete(sym);
+        return next;
+      });
+    } catch {/* ignore */}
+  };
+
+  const isSaved = (symbol) => saved.has(String(symbol).toUpperCase());
+  const toggleSave = (symbol) => (isSaved(symbol) ? removeSymbol(symbol) : addSymbol(symbol));
+
+  // ------------------------------
   // 2) Column configuration
   // ------------------------------
   // Columns: Stock, Performance, More (+ Day Return)
@@ -171,12 +220,7 @@ export default function SummaryResizableTable({
       const arr = typeof val === 'string' ? JSON.parse(val) : val;
       if (!Array.isArray(arr)) return [];
       return arr.map((v) =>
-        v === null ||
-        v === undefined ||
-        Number.isNaN(Number(v)) ||
-        String(v).toLowerCase() === 'nan'
-          ? 0
-          : Number(v)
+        v == null || Number.isNaN(Number(v)) || String(v).toLowerCase() === 'nan' ? 0 : Number(v)
       );
     } catch (err) {
       return [];
@@ -303,7 +347,9 @@ export default function SummaryResizableTable({
   return (
     <div className="p-4 bg-white rounded-2xl shadow border border-gray-200">
       {/* Title */}
-      <h2 className="text-[11px] font-semibold text-center text-blue-600 mb-3">Stocks Summary</h2>
+      <h2 className="text-[11px] font-semibold text-center text-blue-600 mb-3">
+        Stocks Summary {saved.size ? <span className="text-gray-500 font-normal">· Saved ({saved.size})</span> : null}
+      </h2>
 
       {/* Sort controls (Day/Week/Month/Day Return) */}
       <div className="mb-2 flex items-center gap-2 text-[9px]">
@@ -333,7 +379,9 @@ export default function SummaryResizableTable({
           Day Return {sortKey==='dayReturn' ? (sortDir==='asc'?'↑':'↓') : ''}
         </button>
         {sortKey && (
-          <button className="ml-2 px-2 py-1 rounded border border-gray-200 hover:border-gray-300" onClick={() => { setSortKey(null); setSortDir('desc'); }}>Clear</button>
+          <button className="ml-2 px-2 py-1 rounded border border-gray-200 hover:border-gray-300" onClick={() => { setSortKey(null); setSortDir('desc'); }}>
+            Clear
+          </button>
         )}
       </div>
 
@@ -381,7 +429,23 @@ export default function SummaryResizableTable({
                     <div key={col.key} style={{ width: colWidths[i] }} className="px-3 py-2 truncate">
                       {(() => {
                         if (col.key === 'symbol') {
-                          return <div className="text-[10px] font-medium text-gray-800">{row.symbol}</div>;
+                          return (
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => toggleSave(row.symbol)}
+                                className={`h-5 w-5 rounded border text-[10px] flex items-center justify-center
+                                  ${isSaved(row.symbol)
+                                    ? 'border-green-300 bg-green-50'
+                                    : 'border-gray-300 bg-white hover:bg-gray-50'}`}
+                                title={isSaved(row.symbol) ? 'Saved for next analysis' : 'Add to next analysis'}
+                                aria-pressed={isSaved(row.symbol)}
+                              >
+                                {isSaved(row.symbol) ? '✓' : '+'}
+                              </button>
+                              <div className="text-[10px] font-medium text-gray-800">{row.symbol}</div>
+                            </div>
+                          );
                         }
                         if (col.key === 'performance') {
                           return renderPerformanceCell(row);
@@ -410,7 +474,25 @@ export default function SummaryResizableTable({
                     <div className="text-[9px] text-gray-500">{col.label}</div>
                     <div className="text-[10px] font-medium">
                       {(() => {
-                        if (col.key === 'symbol') return row.symbol;
+                        if (col.key === 'symbol') {
+                          return (
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => toggleSave(row.symbol)}
+                                className={`h-5 w-5 rounded border text-[10px] flex items-center justify-center
+                                  ${isSaved(row.symbol)
+                                    ? 'border-green-300 bg-green-50'
+                                    : 'border-gray-300 bg-white hover:bg-gray-50'}`}
+                                title={isSaved(row.symbol) ? 'Saved for next analysis' : 'Add to next analysis'}
+                                aria-pressed={isSaved(row.symbol)}
+                              >
+                                {isSaved(row.symbol) ? '✓' : '+'}
+                              </button>
+                              <span>{row.symbol}</span>
+                            </div>
+                          );
+                        }
                         if (col.key === 'performance') return renderPerformanceCell(row);
                         if (col.key === 'metrics') return renderMetricsCell(row);
                         if (col.key === 'current') return renderDayReturn(row.current);
