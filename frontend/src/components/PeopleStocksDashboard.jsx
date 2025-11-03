@@ -20,51 +20,90 @@ const STOCK_LABELS = {
   LT: "Larsen & Toubro",
   ADANIENT: "Adani Enterprises",
   HCLTECH: "HCL Technologies",
+  ANGELONE: "Angel One",
+  ASIANPAINT: "Asian Paints",
 };
 
 const fmtINR = (n) => {
   if (!isFinite(n) || n === null) return "—";
-  if (n === 0) return "₹0";
+  if (Number(n) === 0) return "₹0";
   const sign = n < 0 ? "-" : "";
   const abs = Math.abs(n);
   return sign + "₹" + abs.toLocaleString("en-IN");
 };
+
+// % helper
 const percent = (num, den) => (!isFinite(num) || !isFinite(den) || den === 0) ? 0 : (num / den) * 100;
-const getVal = (row, key) =>
-  row[key] ?? row[key?.replace?.(/\s/g, "")] ?? row[key?.replace?.(" ", "")] ?? row[key?.replace?.(/\s+/g, "")] ?? null;
+
+// Robust getter that tolerates spaces, slashes, casing, etc.
+const getVal = (row, key) => {
+  if (!row || !key) return null;
+  const cand = [
+    key,
+    key.replace(/\s+/g, ""),
+    key.replace(/\s/g, ""),
+    key.replace(/\s+/g, " "),
+    key.toLowerCase(),
+    key.replace(/[^\w]/g, ""),            // remove non-word chars like "/" and spaces
+    key.toLowerCase().replace(/[^\w]/g, "")
+  ];
+  for (const k of cand) {
+    if (k in row) return row[k];
+    // try variants across keys of row
+    const hit = Object.keys(row).find(rk => rk.toLowerCase().replace(/[^\w]/g, "") === k.toLowerCase().replace(/[^\w]/g, ""));
+    if (hit) return row[hit];
+  }
+  return null;
+};
+
 const getQty = (row) => row.Qty ?? row.qty ?? row.Quantity ?? row.quantity ?? 1;
 
-/** Normalize flat API rows -> [{ person, stocks: {SYMBOL:{buy,current,target,qty,profit}} }] */
+/** Normalize flat API rows -> [{ person, stocks: {SYMBOL:{buy,current,target,qty,invested,profit,dayReturn}} }] */
 function normalizeInput(data, useQtyTotal = true) {
   if (!Array.isArray(data)) return [];
   if (data.length && (data[0].stocks || (typeof Object.values(data[0])[0] === "object" && data[0].person))) {
     return data; // already grouped
   }
+
   const byPerson = new Map();
-  for (const row of data) {
-    const person = row.Person ?? row.person;
-    const stockRaw = row.Stock ?? row.stock;
-    const stock = typeof stockRaw === "string" ? stockRaw.trim() : stockRaw; // trims "ANGELONE "
-    const buy = getVal(row, "Buy Price") ?? row.buy;
-    const current = getVal(row, "Current Price") ?? row.current;
-    const target = getVal(row, "Target Price") ?? row.target;
-    const qty = getQty(row);
+  for (const raw of data) {
+    const person = raw.Person ?? raw.person;
+    const stockRaw = raw.Stock ?? raw.stock;
+    const stock = typeof stockRaw === "string" ? stockRaw.trim() : stockRaw;
 
     if (!person || !stock) continue;
 
-    const perShare = (isFinite(current) && isFinite(buy)) ? (current - buy) : 0;
-    const profit = useQtyTotal ? perShare * (Number.isFinite(qty) ? qty : 1) : perShare;
+    const buy      = Number(getVal(raw, "Buy Price") ?? raw.buy ?? null);
+    const current  = Number(getVal(raw, "Current Price") ?? raw.current ?? null);
+    const target   = Number(getVal(raw, "Target Price") ?? raw.target ?? null);
+    const invested = Number(getVal(raw, "Invested") ?? raw.invested ?? null);
+    const qty      = Number(getQty(raw));
+    const day1     = Number(getVal(raw, "Return over 1day") ?? getVal(raw, "Return over 1 day") ?? raw.dayReturn ?? null);
+    const plField  = Number(getVal(raw, "profit/loss") ?? getVal(raw, "Profit/Loss"));
+
+    // Prefer provided profit/loss; else compute
+    let profit;
+    if (isFinite(plField)) {
+      profit = plField;
+    } else {
+      const perShare = (isFinite(current) && isFinite(buy)) ? (current - buy) : 0;
+      profit = useQtyTotal ? perShare * (Number.isFinite(qty) ? qty : 1) : perShare;
+    }
 
     if (!byPerson.has(person)) byPerson.set(person, {});
-    byPerson.get(person)[stock] = { profit, buy, current, target, qty };
+    byPerson.get(person)[stock] = { profit, buy, current, target, qty, invested, dayReturn: isFinite(day1) ? day1 : null };
   }
+
   return Array.from(byPerson.entries()).map(([person, stocks]) => ({ person, stocks }));
 }
 
 function normalizeStock(val) {
-  if (typeof val === "number") return { profit: val, buy: null, current: null, target: null, qty: 1 };
-  const { profit = 0, buy = null, current = null, target = null, qty = 1 } = val || {};
-  return { profit, buy, current, target, qty };
+  if (typeof val === "number") return { profit: val, buy: null, current: null, target: null, qty: 1, invested: null, dayReturn: null };
+  const {
+    profit = 0, buy = null, current = null, target = null,
+    qty = 1, invested = null, dayReturn = null
+  } = val || {};
+  return { profit, buy, current, target, qty, invested, dayReturn };
 }
 
 function targetProgress(buy, current, target) {
@@ -76,7 +115,7 @@ function targetProgress(buy, current, target) {
   return { pctLeft: Number.isFinite(pctLeft) ? pctLeft : null, reached: progress >= 1 };
 }
 
-function returnPct(buy, current) {
+function totalReturnPct(buy, current) {
   if (buy === null || current === null || buy === 0) return null;
   return percent(current - buy, buy);
 }
@@ -93,17 +132,13 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
   const [error, setError] = useState(null);
   const [personIdx, setPersonIdx] = useState(0);
 
-  // Fetch if apiUrl provided
   useEffect(() => {
     if (!apiUrl) return;
     setLoading(true);
     fetch(apiUrl)
       .then((r) => r.json())
       .then((j) => {
-        // Accept { client:[...] } or other common wrappers
-        const rows = Array.isArray(j)
-          ? j
-          : (j.client || j.records || j.data || j.summary || j);
+        const rows = Array.isArray(j) ? j : (j.client || j.records || j.data || j.summary || j);
         setRemote(Array.isArray(rows) ? rows : []);
         setError(null);
       })
@@ -111,9 +146,8 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
       .finally(() => setLoading(false));
   }, [apiUrl]);
 
-  // No local fallback: use API or provided data only
   const base = data ?? remote ?? [];
-  const normalized = useMemo(() => normalizeInput(base, true), [base]); // true => Quantity-adjusted total P/L
+  const normalized = useMemo(() => normalizeInput(base, true), [base]); // Quantity-adjusted total P/L
   const person = normalized[personIdx] ?? { person: "—", stocks: {} };
 
   const { rows, total, bestRow, worstRow, winRate } = useMemo(() => {
@@ -121,17 +155,19 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
     const pairs = Object.entries(s);
     const rows = pairs.map(([k, v]) => {
       const z = normalizeStock(v);
-      const rPct = returnPct(z.buy, z.current); // per-share return %
+      const rPct = totalReturnPct(z.buy, z.current); // per-position (per-share) total return %
       const tProg = targetProgress(z.buy, z.current, z.target);
       return {
         key: k,
         label: STOCK_LABELS[k] || k,
-        profit: z.profit, // total P/L with Quantity
+        profit: z.profit,
         buy: z.buy,
         current: z.current,
         target: z.target,
         qty: z.qty ?? 1,
-        returnPct: rPct,
+        invested: z.invested,
+        dayReturn: z.dayReturn, // from "Return over 1day"
+        totalReturnPct: rPct,
         targetPctLeft: tProg.pctLeft,
         targetReached: tProg.reached,
         abs: Math.abs(z.profit),
@@ -181,7 +217,7 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <KPI title="Person" value={person.person} />
-        <KPI title="Total Profit" value={fmtINR(total)} valueClass={total > 0 ? "text-green-600" : total < 0 ? "text-red-600" : "text-gray-600"} />
+        <KPI title="Total Profit/Loss" value={fmtINR(total)} valueClass={total > 0 ? "text-green-600" : total < 0 ? "text-red-600" : "text-gray-600"} />
         <KPI title="Best Stock" value={bestRow ? `${bestRow.label} • ${fmtINR(bestRow.profit)}` : "—"} />
         <KPI title="Worst Stock" value={worstRow ? `${worstRow.label} • ${fmtINR(worstRow.profit)}` : "—"} />
         <KPI title="Win Rate" value={`${winRate.toFixed(0)}%`} />
@@ -222,7 +258,7 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
             <YAxis />
             <RTooltip formatter={(v) => fmtINR(v)} />
             <Legend />
-            <Bar dataKey="value" name="Profit (₹)">
+            <Bar dataKey="value" name="Profit/Loss (₹)">
               {barData.map((entry, i) => (
                 <Cell key={`cell-${i}`} fill={entry.value > 0 ? POS : entry.value < 0 ? NEG : NEU} />
               ))}
@@ -242,8 +278,11 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
                 <th className="py-2 pr-4">Buy</th>
                 <th className="py-2 pr-4">Current</th>
                 <th className="py-2 pr-4">Target</th>
-                <th className="py-2 pr-4">Profit (₹)</th>
-                <th className="py-2 pr-4">Return %</th>
+                <th className="py-2 pr-4">Quantity</th>
+                <th className="py-2 pr-4">Invested</th>
+                <th className="py-2 pr-4">Profit/Loss (₹)</th>
+                <th className="py-2 pr-4">Day Return %</th>
+                <th className="py-2 pr-4">Total Return %</th>
                 <th className="py-2">Target Progress</th>
                 <th className="py-2">Contribution %</th>
               </tr>
@@ -252,7 +291,6 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
               {rows.map((r) => {
                 const sumAbs = rows.reduce((a, x) => a + x.abs, 0);
                 const pct = sumAbs === 0 ? 0 : (r.abs / sumAbs) * 100; // absolute only
-                const rp = r.returnPct;
                 const tp = r.targetPctLeft;
                 const reached = r.targetReached;
                 return (
@@ -261,12 +299,21 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
                     <td className="py-2 pr-4">{r.buy !== null ? fmtINR(r.buy) : "—"}</td>
                     <td className="py-2 pr-4">{r.current !== null ? fmtINR(r.current) : "—"}</td>
                     <td className="py-2 pr-4">{r.target !== null ? fmtINR(r.target) : "—"}</td>
+                    <td className="py-2 pr-4">{isFinite(r.qty) ? r.qty : "—"}</td>
+                    <td className="py-2 pr-4">{r.invested !== null ? fmtINR(r.invested) : "—"}</td>
                     <td className="py-2 pr-4">
                       <span className={r.profit > 0 ? "text-green-600" : r.profit < 0 ? "text-red-600" : "text-gray-600"}>
                         {fmtINR(r.profit)}
                       </span>
                     </td>
-                    <td className="py-2 pr-4">{rp === null ? "—" : `${rp.toFixed(1)}%`}</td>
+                    <td className="py-2 pr-4">
+                      {r.dayReturn === null || Number.isNaN(r.dayReturn)
+                        ? "—"
+                        : <span className={r.dayReturn > 0 ? "text-green-600" : r.dayReturn < 0 ? "text-red-600" : "text-gray-600"}>
+                            {r.dayReturn.toFixed(2)}%
+                          </span>}
+                    </td>
+                    <td className="py-2 pr-4">{r.totalReturnPct === null ? "—" : `${r.totalReturnPct.toFixed(2)}%`}</td>
                     <td className="py-2">
                       {tp === null ? (
                         <span className="text-gray-400">—</span>
@@ -307,7 +354,10 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
                 <td className="py-2 pr-4">—</td>
                 <td className="py-2 pr-4">—</td>
                 <td className="py-2 pr-4">—</td>
+                <td className="py-2 pr-4">—</td>
+                <td className="py-2 pr-4">—</td>
                 <td className="py-2 pr-4">{fmtINR(total)}</td>
+                <td className="py-2 text-gray-500">—</td>
                 <td className="py-2 text-gray-500">—</td>
                 <td className="py-2 text-gray-500">—</td>
                 <td className="py-2 text-gray-500">100%</td>
@@ -319,8 +369,9 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
 
       {/* Notes */}
       <div className="text-xs text-gray-500">
-        • <b>Return %</b> = (Current − Buy) / Buy × 100.<br/>
-        • <b>Target Progress</b> shows remaining distance from Buy → Target. “X% left” = how much remains; once Current ≥ Target, it shows “Reached”.<br/>
+        • <b>Day Return %</b> comes from your “Return over 1day” column.<br/>
+        • <b>Total Return %</b> = (Current − Buy) / Buy × 100.<br/>
+        • <b>Target Progress</b> shows remaining distance from Buy → Target.<br/>
         • <b>Contribution %</b> = |stock profit| / sum(|profits|) × 100 (absolute only).
       </div>
     </div>
