@@ -22,6 +22,8 @@ const STOCK_LABELS = {
   HCLTECH: "HCL Technologies",
   ANGELONE: "Angel One",
   ASIANPAINT: "Asian Paints",
+  NIFTYBEES: "NIFTYBEES",
+  TMPV: "TMPV",
 };
 
 const fmtINR = (n) => {
@@ -31,7 +33,7 @@ const fmtINR = (n) => {
   const abs = Math.abs(n);
   return sign + "₹" + abs.toLocaleString("en-IN");
 };
-const percent = (num, den) => (!isFinite(num) || !isFinite(den) || den === 0) ? 0 : (num / den) * 100;
+const percent = (num, den) => (!isFinite(num) || !isFinite(den) || den === 0) ? null : (num / den) * 100;
 
 // Robust getter tolerant to spaces/slashes/case
 const getVal = (row, key) => {
@@ -110,7 +112,7 @@ function targetProgress(buy, current, target) {
 
 function totalReturnPct(buy, current) {
   if (buy === null || current === null || buy === 0) return null;
-  return percent(current - buy, buy);
+  return ((current - buy) / buy) * 100;
 }
 
 /* ---------------- Sorting hook ---------------- */
@@ -169,7 +171,10 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
   const normalized = useMemo(() => normalizeInput(base, true), [base]); // quantity-adjusted total P/L
   const person = normalized[personIdx] ?? { person: "—", stocks: {} };
 
-  const { rows, total, bestRow, worstRow, winRate, investedSum } = useMemo(() => {
+  const {
+    rows, total, bestRow, worstRow, winRate,
+    investedSum, currentSum
+  } = useMemo(() => {
     const s = person.stocks || {};
     const pairs = Object.entries(s);
     const rows = pairs.map(([k, v]) => {
@@ -180,6 +185,7 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
       const investedVal = Number.isFinite(z.invested)
         ? z.invested
         : (Number.isFinite(z.buy) && Number.isFinite(z.qty) ? z.buy * z.qty : null);
+      const currentVal = (Number.isFinite(z.current) && Number.isFinite(z.qty)) ? z.current * z.qty : null;
 
       return {
         key: k,
@@ -190,6 +196,7 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
         target: z.target,
         qty: z.qty ?? 1,
         invested: investedVal,
+        currentValue: currentVal,
         dayReturn: z.dayReturn,          // "Return over 1day"
         totalReturnPct: rPct,
         targetPctLeft: tProg.pctLeft,
@@ -197,13 +204,17 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
         abs: Math.abs(z.profit),
       };
     });
+
     const total = rows.reduce((acc, r) => acc + (r.profit || 0), 0);
     const investedSum = rows.reduce((acc, r) => acc + (Number.isFinite(r.invested) ? r.invested : 0), 0);
+    const currentSum  = rows.reduce((acc, r) => acc + (Number.isFinite(r.currentValue) ? r.currentValue : 0), 0);
+
     const bestRow = rows.reduce((m, r) => (r.profit > (m?.profit ?? -Infinity) ? r : m), null);
     const worstRow = rows.reduce((m, r) => (r.profit < (m?.profit ?? Infinity) ? r : m), null);
     const positives = rows.filter((r) => (r.profit || 0) > 0).length;
-    const winRate = percent(positives, rows.length);
-    return { rows, total, bestRow, worstRow, winRate, investedSum };
+    const winRate = ((positives / (rows.length || 1)) * 100);
+
+    return { rows, total, bestRow, worstRow, winRate, investedSum, currentSum };
   }, [person]);
 
   // Sorting setup for the detail table
@@ -221,6 +232,9 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
 
   const barData = rows.map((r) => ({ label: r.label, value: r.profit }));
   const personOptions = normalized.map((p) => p.person);
+
+  // KPI extra percentage of Profit/Loss: Total P/L ÷ Total Invested × 100
+  const totalPLPct = percent(total, investedSum);
 
   if (loading) return <div className="p-6">Loading people stocks…</div>;
   if (error)   return <div className="p-6 text-red-600">Error: {String(error)}</div>;
@@ -243,13 +257,42 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-6 gap-4">
         <KPI title="Person" value={person.person} />
         <KPI title="Invested (₹)" value={fmtINR(investedSum)} />
-        <KPI title="Total Profit/Loss" value={fmtINR(total)} valueClass={total > 0 ? "text-green-600" : total < 0 ? "text-red-600" : "text-gray-600"} />
-        <KPI title="Best Stock" value={bestRow ? `${bestRow.label} • ${fmtINR(bestRow.profit)}` : "—"} />
-        <KPI title="Worst Stock" value={worstRow ? `${worstRow.label} • ${fmtINR(worstRow.profit)}` : "—"} />
-        <KPI title="Win Rate" value={`${winRate.toFixed(0)}%`} />
+        <KPI
+          title="Total Profit/Loss"
+          value={
+            totalPLPct === null
+              ? `${fmtINR(total)}`
+              : `${fmtINR(total)}  (${totalPLPct >= 0 ? "+" : ""}${totalPLPct.toFixed(2)}%)`
+          }
+          valueClass={
+            total > 0 ? "text-green-600 font-semibold" :
+            total < 0 ? "text-red-600 font-semibold" : "text-gray-600"
+          }
+        />
+        <KPI
+          title="Best Stock"
+          value={
+            bestRow
+              ? (<span className="font-semibold">
+                  {bestRow.label} • <span className="text-green-600">{fmtINR(bestRow.profit)}</span>
+                </span>)
+              : "—"
+          }
+        />
+        <KPI
+          title="Worst Stock"
+          value={
+            worstRow
+              ? (<span className="font-semibold">
+                  {worstRow.label} • <span className="text-red-600">{fmtINR(worstRow.profit)}</span>
+                </span>)
+              : "—"
+          }
+        />
+        <KPI title="Win Rate" value={`${(winRate || 0).toFixed(0)}%`} />
       </div>
 
       {/* Charts */}
@@ -301,8 +344,8 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
         <div className="text-lg font-medium mb-3">Detail</div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="text-left text-gray-500">
-              <tr>
+            <thead className="text-left">
+              <tr className="text-blue-700 font-bold">
                 <th className="py-2 pr-4">Stock</th>
                 <th className="py-2 pr-4">Buy</th>
                 <th className="py-2 pr-4">Current</th>
@@ -313,7 +356,7 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
                 <th className="py-2 pr-4">
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1 hover:underline"
+                    className="inline-flex items-center gap-1 hover:underline text-blue-700 font-bold"
                     onClick={() => toggleSort("invested")}
                     title="Sort by Invested"
                   >
@@ -325,7 +368,7 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
                 <th className="py-2 pr-4">
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1 hover:underline"
+                    className="inline-flex items-center gap-1 hover:underline text-blue-700 font-bold"
                     onClick={() => toggleSort("profit")}
                     title="Sort by Profit/Loss"
                   >
@@ -335,11 +378,11 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
 
                 <th className="py-2 pr-4">Day Return %</th>
 
-                {/* Total Return % sortable + colored values */}
+                {/* Total Return % sortable */}
                 <th className="py-2 pr-4">
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1 hover:underline"
+                    className="inline-flex items-center gap-1 hover:underline text-blue-700 font-bold"
                     onClick={() => toggleSort("totalReturnPct")}
                     title="Sort by Total Return %"
                   >
@@ -358,21 +401,21 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
                 const reached = r.targetReached;
                 return (
                   <tr key={r.key} className="border-t align-middle">
-                    <td className="py-2 pr-4 whitespace-nowrap">{r.label}</td>
+                    <td className="py-2 pr-4 whitespace-nowrap text-blue-700 font-bold">{r.label}</td>
                     <td className="py-2 pr-4">{r.buy !== null ? fmtINR(r.buy) : "—"}</td>
                     <td className="py-2 pr-4">{r.current !== null ? fmtINR(r.current) : "—"}</td>
                     <td className="py-2 pr-4">{r.target !== null ? fmtINR(r.target) : "—"}</td>
                     <td className="py-2 pr-4">{isFinite(r.qty) ? r.qty : "—"}</td>
                     <td className="py-2 pr-4">{r.invested !== null ? fmtINR(r.invested) : "—"}</td>
                     <td className="py-2 pr-4">
-                      <span className={r.profit > 0 ? "text-green-600" : r.profit < 0 ? "text-red-600" : "text-gray-600"}>
+                      <span className={r.profit > 0 ? "text-green-600 font-semibold" : r.profit < 0 ? "text-red-600 font-semibold" : "text-gray-600"}>
                         {fmtINR(r.profit)}
                       </span>
                     </td>
                     <td className="py-2 pr-4">
                       {r.dayReturn === null || Number.isNaN(r.dayReturn)
                         ? "—"
-                        : <span className={r.dayReturn > 0 ? "text-green-600" : r.dayReturn < 0 ? "text-red-600" : "text-gray-600"}>
+                        : <span className={r.dayReturn > 0 ? "text-green-600 font-semibold" : r.dayReturn < 0 ? "text-red-600 font-semibold" : "text-gray-600"}>
                             {r.dayReturn.toFixed(2)}%
                           </span>}
                     </td>
@@ -380,8 +423,8 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
                       {r.totalReturnPct === null
                         ? "—"
                         : <span className={
-                            r.totalReturnPct > 0 ? "text-green-600" :
-                            r.totalReturnPct < 0 ? "text-red-600"  :
+                            r.totalReturnPct > 0 ? "text-green-600 font-semibold" :
+                            r.totalReturnPct < 0 ? "text-red-600 font-semibold"  :
                             "text-gray-600"
                           }>
                             {r.totalReturnPct.toFixed(2)}%
@@ -442,9 +485,9 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
 
       {/* Notes */}
       <div className="text-xs text-gray-500">
+        • <b>Total Profit/Loss %</b> shown in KPI = Total P/L ÷ Total Invested × 100.<br/>
         • <b>Day Return %</b> comes from your “Return over 1day” column.<br/>
-        • <b>Total Return %</b> = (Current − Buy) / Buy × 100. Colored green (+), red (−), gray (0/NA).<br/>
-        • <b>Target Progress</b> shows remaining distance from Buy → Target.<br/>
+        • <b>Total Return %</b> = (Current − Buy) / Buy × 100 (green +, red −, gray 0/NA).<br/>
         • <b>Contribution %</b> = |stock profit| / sum(|profits|) × 100 (absolute only).
       </div>
     </div>
