@@ -31,31 +31,28 @@ const fmtINR = (n) => {
   const abs = Math.abs(n);
   return sign + "₹" + abs.toLocaleString("en-IN");
 };
-
-// % helper
 const percent = (num, den) => (!isFinite(num) || !isFinite(den) || den === 0) ? 0 : (num / den) * 100;
 
-// Robust getter that tolerates spaces, slashes, casing, etc.
+// Robust getter tolerant to spaces/slashes/case
 const getVal = (row, key) => {
   if (!row || !key) return null;
-  const cand = [
+  const variants = [
     key,
     key.replace(/\s+/g, ""),
     key.replace(/\s/g, ""),
-    key.replace(/\s+/g, " "),
+    key.replace(/[^\w]/g, ""),
     key.toLowerCase(),
-    key.replace(/[^\w]/g, ""),            // remove non-word chars like "/" and spaces
     key.toLowerCase().replace(/[^\w]/g, "")
   ];
-  for (const k of cand) {
-    if (k in row) return row[k];
-    // try variants across keys of row
-    const hit = Object.keys(row).find(rk => rk.toLowerCase().replace(/[^\w]/g, "") === k.toLowerCase().replace(/[^\w]/g, ""));
+  for (const v of variants) {
+    if (v in row) return row[v];
+    const hit = Object.keys(row).find(
+      (rk) => rk.toLowerCase().replace(/[^\w]/g, "") === v.toLowerCase()
+    );
     if (hit) return row[hit];
   }
   return null;
 };
-
 const getQty = (row) => row.Qty ?? row.qty ?? row.Quantity ?? row.quantity ?? 1;
 
 /** Normalize flat API rows -> [{ person, stocks: {SYMBOL:{buy,current,target,qty,invested,profit,dayReturn}} }] */
@@ -70,7 +67,6 @@ function normalizeInput(data, useQtyTotal = true) {
     const person = raw.Person ?? raw.person;
     const stockRaw = raw.Stock ?? raw.stock;
     const stock = typeof stockRaw === "string" ? stockRaw.trim() : stockRaw;
-
     if (!person || !stock) continue;
 
     const buy      = Number(getVal(raw, "Buy Price") ?? raw.buy ?? null);
@@ -81,7 +77,6 @@ function normalizeInput(data, useQtyTotal = true) {
     const day1     = Number(getVal(raw, "Return over 1day") ?? getVal(raw, "Return over 1 day") ?? raw.dayReturn ?? null);
     const plField  = Number(getVal(raw, "profit/loss") ?? getVal(raw, "Profit/Loss"));
 
-    // Prefer provided profit/loss; else compute
     let profit;
     if (isFinite(plField)) {
       profit = plField;
@@ -98,11 +93,9 @@ function normalizeInput(data, useQtyTotal = true) {
 }
 
 function normalizeStock(val) {
-  if (typeof val === "number") return { profit: val, buy: null, current: null, target: null, qty: 1, invested: null, dayReturn: null };
-  const {
-    profit = 0, buy = null, current = null, target = null,
-    qty = 1, invested = null, dayReturn = null
-  } = val || {};
+  if (typeof val === "number")
+    return { profit: val, buy: null, current: null, target: null, qty: 1, invested: null, dayReturn: null };
+  const { profit = 0, buy = null, current = null, target = null, qty = 1, invested = null, dayReturn = null } = val || {};
   return { profit, buy, current, target, qty, invested, dayReturn };
 }
 
@@ -110,7 +103,7 @@ function targetProgress(buy, current, target) {
   if (buy === null || current === null || target === null) return { pctLeft: null, reached: false };
   const denom = target - buy;
   if (denom === 0) return { pctLeft: 0, reached: true };
-  const progress = (current - buy) / denom; // 0 at buy, 1 at target
+  const progress = (current - buy) / denom;
   const pctLeft = Math.max(0, (1 - progress) * 100);
   return { pctLeft: Number.isFinite(pctLeft) ? pctLeft : null, reached: progress >= 1 };
 }
@@ -120,18 +113,44 @@ function totalReturnPct(buy, current) {
   return percent(current - buy, buy);
 }
 
-/**
- * PeopleStocksDashboard
- * Props:
- *  - apiUrl?: string  -> ex: "http://127.0.0.1:4000/api/client" (returns { client: [...] })
- *  - data?:   array   -> same shape as your API rows
- */
+/* ---------------- Sorting hook ---------------- */
+function useSorter(rows) {
+  const [sortKey, setSortKey] = useState(null);           // "invested" | "profit" | "totalReturnPct"
+  const [sortDir, setSortDir] = useState("desc");         // "asc" | "desc"
+
+  const toggleSort = (key) => {
+    if (sortKey !== key) {
+      setSortKey(key);
+      setSortDir("desc");
+    } else {
+      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+    }
+  };
+
+  const sorted = useMemo(() => {
+    if (!sortKey) return rows;
+    const factor = sortDir === "asc" ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const av = Number.isFinite(a[sortKey]) ? a[sortKey] : -Infinity;
+      const bv = Number.isFinite(b[sortKey]) ? b[sortKey] : -Infinity;
+      if (av === bv) return 0;
+      return av > bv ? factor : -factor;
+    });
+  }, [rows, sortKey, sortDir]);
+
+  const sortIcon = (key) => (sortKey !== key ? "↕" : sortDir === "desc" ? "↓" : "↑");
+
+  return { sorted, toggleSort, sortIcon, sortKey, sortDir };
+}
+
+/* ---------------- Component ---------------- */
 export default function PeopleStocksDashboard({ apiUrl, data }) {
   const [remote, setRemote] = useState(null);
   const [loading, setLoading] = useState(Boolean(apiUrl));
   const [error, setError] = useState(null);
   const [personIdx, setPersonIdx] = useState(0);
 
+  // Fetch if apiUrl provided
   useEffect(() => {
     if (!apiUrl) return;
     setLoading(true);
@@ -147,7 +166,7 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
   }, [apiUrl]);
 
   const base = data ?? remote ?? [];
-  const normalized = useMemo(() => normalizeInput(base, true), [base]); // Quantity-adjusted total P/L
+  const normalized = useMemo(() => normalizeInput(base, true), [base]); // quantity-adjusted total P/L
   const person = normalized[personIdx] ?? { person: "—", stocks: {} };
 
   const { rows, total, bestRow, worstRow, winRate } = useMemo(() => {
@@ -155,7 +174,7 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
     const pairs = Object.entries(s);
     const rows = pairs.map(([k, v]) => {
       const z = normalizeStock(v);
-      const rPct = totalReturnPct(z.buy, z.current); // per-position (per-share) total return %
+      const rPct = totalReturnPct(z.buy, z.current);
       const tProg = targetProgress(z.buy, z.current, z.target);
       return {
         key: k,
@@ -166,7 +185,7 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
         target: z.target,
         qty: z.qty ?? 1,
         invested: z.invested,
-        dayReturn: z.dayReturn, // from "Return over 1day"
+        dayReturn: z.dayReturn,          // "Return over 1day"
         totalReturnPct: rPct,
         targetPctLeft: tProg.pctLeft,
         targetReached: tProg.reached,
@@ -181,15 +200,18 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
     return { rows, total, bestRow, worstRow, winRate };
   }, [person]);
 
-  // Absolute-only donut composition
+  // Sorting setup for the detail table
+  const { sorted, toggleSort, sortIcon } = useSorter(rows);
+  const sumAbs = useMemo(() => rows.reduce((a, x) => a + x.abs, 0), [rows]);
+
+  // Charts (use unsorted rows)
   const donutData = useMemo(() => {
-    const sumAbs = rows.reduce((a, r) => a + r.abs, 0);
     return rows.map((r) => ({
       name: r.label,
       value: sumAbs === 0 ? 0 : (r.abs / sumAbs) * 100,
       raw: r.profit,
     }));
-  }, [rows]);
+  }, [rows, sumAbs]);
 
   const barData = rows.map((r) => ({ label: r.label, value: r.profit }));
   const personOptions = normalized.map((p) => p.person);
@@ -279,18 +301,52 @@ export default function PeopleStocksDashboard({ apiUrl, data }) {
                 <th className="py-2 pr-4">Current</th>
                 <th className="py-2 pr-4">Target</th>
                 <th className="py-2 pr-4">Quantity</th>
-                <th className="py-2 pr-4">Invested</th>
-                <th className="py-2 pr-4">Profit/Loss (₹)</th>
+
+                {/* Invested sortable */}
+                <th className="py-2 pr-4">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 hover:underline"
+                    onClick={() => toggleSort("invested")}
+                    title="Sort by Invested"
+                  >
+                    Invested <span className="text-xs">{sortIcon("invested")}</span>
+                  </button>
+                </th>
+
+                {/* Profit/Loss sortable */}
+                <th className="py-2 pr-4">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 hover:underline"
+                    onClick={() => toggleSort("profit")}
+                    title="Sort by Profit/Loss"
+                  >
+                    Profit/Loss (₹) <span className="text-xs">{sortIcon("profit")}</span>
+                  </button>
+                </th>
+
                 <th className="py-2 pr-4">Day Return %</th>
-                <th className="py-2 pr-4">Total Return %</th>
+
+                {/* Total Return % sortable */}
+                <th className="py-2 pr-4">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 hover:underline"
+                    onClick={() => toggleSort("totalReturnPct")}
+                    title="Sort by Total Return %"
+                  >
+                    Total Return % <span className="text-xs">{sortIcon("totalReturnPct")}</span>
+                  </button>
+                </th>
+
                 <th className="py-2">Target Progress</th>
                 <th className="py-2">Contribution %</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
-                const sumAbs = rows.reduce((a, x) => a + x.abs, 0);
-                const pct = sumAbs === 0 ? 0 : (r.abs / sumAbs) * 100; // absolute only
+              {sorted.map((r) => {
+                const pct = sumAbs === 0 ? 0 : (r.abs / sumAbs) * 100; // absolute-only contribution
                 const tp = r.targetPctLeft;
                 const reached = r.targetReached;
                 return (
