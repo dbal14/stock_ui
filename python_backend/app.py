@@ -75,7 +75,7 @@ def watchlist():
         return jsonify({"ok": True, "symbols": items})
     
  
-client=r"D:\dashboard\dashboard_project_full_data\dashboard_project_python_only\all_data\client_stock_data.csv"
+client=r"D:\dashboard\dashboard_project_full_data\dashboard_project_python_only\all_data\client_stock_data1.csv"
 @app.route("/api/client", methods=["GET"])
 def get_client():
     try:
