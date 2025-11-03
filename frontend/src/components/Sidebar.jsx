@@ -16,7 +16,7 @@ export default function Sidebar({ onAddNew = () => {} }) {
 const links = [
 { icon: Home, label: 'Home' },
 { icon: TrendingUp, label: 'Market' },
-{ icon: IconLineChart, label: 'Upside' },
+{ icon: IconLineChart, label: 'Clint' },
 { icon: Briefcase, label: 'Technical' },
 { icon: IconPieChart, label: 'Peer Analysis' },
 { icon: DollarSign, label: 'Transactions' },
