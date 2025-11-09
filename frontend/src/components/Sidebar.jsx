@@ -12,12 +12,16 @@ import {
   DollarSign,
 } from 'lucide-react';
 
-export default function Sidebar({ onAddNew = () => {}, onNavigate = () => {}, active = 'Home' }) {
+export default function Sidebar({
+  onAddNew = () => {},
+  onNavigate = () => {},
+  active = 'Home',
+}) {
   const links = [
     { icon: Home, label: 'Home' },
-    { icon: TrendingUp, label: 'Market' },        // ⬅️ clicking this will show FinanceTable
+    { icon: TrendingUp, label: 'Market' },
     { icon: IconLineChart, label: 'Clint' },
-    { icon: Briefcase, label: 'Technical' },
+    { icon: Briefcase, label: 'Technical' }, // must match App state's string
     { icon: IconPieChart, label: 'Peer Analysis' },
     { icon: DollarSign, label: 'Transactions' },
     { icon: BarChart2, label: 'Analytics' },
@@ -28,9 +32,13 @@ export default function Sidebar({ onAddNew = () => {}, onNavigate = () => {}, ac
   const SidebarLink = ({ icon: Icon, label, isActive, onClick }) => (
     <button
       type="button"
-      onClick={onClick}
-      className={`w-full text-left flex items-center gap-3 px-3 py-2 rounded transition text-white
-        ${isActive ? 'bg-indigo-800' : 'hover:bg-indigo-800'}`}
+      onClick={() => {
+        console.log('Navigate to:', label); // debug
+        onClick();
+      }}
+      className={`w-full text-left flex items-center gap-3 px-3 py-2 rounded transition text-white ${
+        isActive ? 'bg-indigo-800' : 'hover:bg-indigo-800'
+      }`}
     >
       <Icon size={18} /> <span>{label}</span>
     </button>
@@ -49,7 +57,7 @@ export default function Sidebar({ onAddNew = () => {}, onNavigate = () => {}, ac
             icon={lnk.icon}
             label={lnk.label}
             isActive={active === lnk.label}
-            onClick={() => onNavigate(lnk.label)}   // ⬅️ tell App which tab to show
+            onClick={() => onNavigate(lnk.label)}
           />
         ))}
       </nav>
