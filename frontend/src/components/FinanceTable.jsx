@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 const data = [
   {
@@ -73,24 +73,158 @@ const data = [
 ];
 
 export default function FinanceTable() {
+  // All available columns
+  const allColumns = useMemo(() => (data.length ? Object.keys(data[0]) : []), []);
+
+  // Columns selected to display (default: all)
+  const [selectedColumns, setSelectedColumns] = useState(allColumns);
+
+  // Dropdown open/close
+  const [open, setOpen] = useState(false);
+  const popoverRef = useRef(null);
+
+  // Close on outside click / Esc
+  useEffect(() => {
+    function onDocClick(e) {
+      if (open && popoverRef.current && !popoverRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    function onKey(e) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const allSelected = selectedColumns.length === allColumns.length;
+
+  const toggleColumn = (col) => {
+    setSelectedColumns((prev) =>
+      prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]
+    );
+  };
+
+  const handleSelectAll = (checked) => {
+    setSelectedColumns(checked ? allColumns : []);
+  };
+
+  const handleReset = () => setSelectedColumns(allColumns);
+
+  const visibleColumns = selectedColumns;
+
   return (
     <div className="p-4">
-      <h2 className="text-2xl font-bold mb-4">Finance Data Table</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-bold">Finance Data Table</h2>
+
+        {/* Column chooser icon button */}
+        <div className="relative" ref={popoverRef}>
+          <button
+            type="button"
+            onClick={() => setOpen((s) => !s)}
+            className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm shadow-sm hover:bg-gray-50"
+            title="Choose columns"
+          >
+            {/* Simple slider/settings icon (inline SVG) */}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              className="h-5 w-5"
+            >
+              <path d="M4 6.75h8.25m7.5 0H15M4 12h6m10.5 0H12M4 17.25h3.75m12 0h-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            <span className="hidden sm:inline">Columns</span>
+          </button>
+
+          {/* Popover */}
+          {open && (
+            <div className="absolute right-0 z-20 mt-2 w-72 rounded-xl border bg-white p-3 shadow-lg">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="font-semibold">Show columns</div>
+                <button
+                  onClick={handleReset}
+                  className="text-xs underline hover:no-underline"
+                >
+                  Reset
+                </button>
+              </div>
+
+              {/* Select all */}
+              <label className="mb-2 flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-gray-50">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={allSelected}
+                  onChange={(e) => handleSelectAll(e.target.checked)}
+                />
+                <span className="text-sm">Select all</span>
+              </label>
+
+              <div className="max-h-64 overflow-auto pr-1">
+                {allColumns.map((col) => (
+                  <label
+                    key={col}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-gray-50"
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={selectedColumns.includes(col)}
+                      onChange={() => toggleColumn(col)}
+                    />
+                    <span className="truncate" title={col}>{col}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="mt-3 flex justify-end">
+                <button
+                  onClick={() => setOpen(false)}
+                  className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="overflow-x-auto">
         <table className="min-w-full border border-gray-300 text-sm">
           <thead className="bg-gray-100 font-semibold">
             <tr>
-              {Object.keys(data[0]).map((key) => (
-                <th key={key} className="border px-2 py-1 whitespace-nowrap">{key}</th>
-              ))}
+              {visibleColumns.length === 0 ? (
+                <th className="border px-2 py-1 text-left">No columns selected</th>
+              ) : (
+                visibleColumns.map((key) => (
+                  <th key={key} className="border px-2 py-1 whitespace-nowrap">
+                    {key}
+                  </th>
+                ))
+              )}
             </tr>
           </thead>
           <tbody>
             {data.map((row, index) => (
               <tr key={index} className="hover:bg-gray-50">
-                {Object.values(row).map((value, idx) => (
-                  <td key={idx} className="border px-2 py-1 whitespace-nowrap text-center">{value}</td>
-                ))}
+                {visibleColumns.length === 0 ? (
+                  <td className="border px-2 py-1 text-center text-gray-500" colSpan={1}>
+                    Use the Columns button to choose fields
+                  </td>
+                ) : (
+                  visibleColumns.map((col) => (
+                    <td key={col} className="border px-2 py-1 whitespace-nowrap text-center">
+                      {row[col]}
+                    </td>
+                  ))
+                )}
               </tr>
             ))}
           </tbody>
